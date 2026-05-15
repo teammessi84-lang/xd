@@ -303,14 +303,23 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
 <!-- MODAL QR -->
 <div class="moverlay" id="qr-modal">
   <div class="modal">
-    <h3 id="qm-name">—</h3>
-    <div class="msub" id="qm-sub">2° de Primaria</div>
+    <h3 id="qm-name">--</h3>
+    <div class="msub" id="qm-sub">2 de Primaria</div>
     <div id="qr-box"></div>
-    <div class="mbtns">
-      <button class="btn b-green" onclick="dlQR()">💾 Guardar</button>
-      <button class="btn b-red" onclick="closeModal()">✕ Cerrar</button>
+    <div class="mbtns" style="flex-wrap:wrap;gap:6px">
+      <button class="btn b-green" onclick="dlQR()">Guardar</button>
+      <button class="btn b-dark" onclick="pantallaCompleta()" style="flex:1">Escanear desde celular</button>
+      <button class="btn b-red" onclick="closeModal()">Cerrar</button>
     </div>
   </div>
+</div>
+
+<!-- MODO PANTALLA COMPLETA - fondo negro para escanear con celular -->
+<div id="qr-fullscreen" onclick="cerrarFullscreen()" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column;align-items:center;justify-content:center;cursor:pointer">
+  <div style="color:#555;font-size:12px;margin-bottom:24px;letter-spacing:2px;text-transform:uppercase">Toca para cerrar</div>
+  <div id="qr-fs-box" style="background:#fff;padding:28px;border-radius:16px;box-shadow:0 0 0 8px #fff"></div>
+  <div id="qr-fs-name" style="color:#fff;font-size:24px;font-weight:800;margin-top:28px;text-align:center;max-width:90vw;line-height:1.3"></div>
+  <div style="color:#666;font-size:14px;margin-top:8px">2 de Primaria</div>
 </div>
 
 <div id="print-area" style="display:none"></div>
@@ -527,6 +536,27 @@ function showQR(id){
 }
 function closeModal(){document.getElementById('qr-modal').classList.remove('open')}
 document.getElementById('qr-modal').addEventListener('click',function(e){if(e.target===this)closeModal()});
+
+function pantallaCompleta(){
+  if(!qrA) return;
+  closeModal();
+  const fs = document.getElementById('qr-fullscreen');
+  const box = document.getElementById('qr-fs-box');
+  box.innerHTML = '';
+  // QR grande (320px) sobre fondo blanco puro, fondo de pantalla negro = máximo contraste
+  new QRCode(box, {text: qrA.id, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.H});
+  document.getElementById('qr-fs-name').textContent = qrA.nombre;
+  fs.style.display = 'flex';
+  // Intentar pantalla completa real del navegador
+  try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }catch(e){}
+}
+function cerrarFullscreen(){
+  document.getElementById('qr-fullscreen').style.display = 'none';
+  try{ document.fullscreenElement && document.exitFullscreen(); }catch(e){}
+}
+// Cerrar con Escape también
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') cerrarFullscreen(); });
+
 function dlQR(){
   if(!qrA) return;
   const c=document.querySelector('#qr-box canvas');
