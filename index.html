@@ -6,7 +6,7 @@
 <title>Asistencia 2° Primaria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <!-- Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -80,6 +80,11 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
 .card-head.azul{background:var(--azul-c);color:var(--azul)}
 .card-head.amber{background:var(--amber-c);color:#7a5200}
 .card-head.rojo{background:var(--rojo-c);color:var(--rojo)}
+/* SETUP BANNER */
+#setup-banner{background:var(--amber-c);border:2px dashed var(--amber);border-radius:14px;padding:16px;margin-bottom:14px;display:none}
+#setup-banner.show{display:block}
+#setup-banner h3{font-size:15px;font-weight:800;color:#7a5200;margin-bottom:6px}
+#setup-banner p{font-size:13px;line-height:1.7;color:#5a3a00}
 /* SCANNER */
 #video-wrap{position:relative;background:#0d0d0d;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #video{width:100%;max-height:320px;object-fit:cover;display:none}
@@ -198,7 +203,7 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
 <header>
   <div class="logo">🏫</div>
   <div>
-    <h1>Asistencia 2°B de Primaria</h1>
+    <h1>Asistencia — 2°B de Primaria</h1>
     <p id="hdate">Cargando...</p>
     <p id="fb-status">⏳ Conectando con Firebase...</p>
   </div>
@@ -213,9 +218,12 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
 
 <!-- SCANNER -->
 <div class="page active" id="page-scanner">
+  <div id="setup-banner">
+    <p>Ve a la pestaña <strong>📊 Excel</strong> para ver las instrucciones paso a paso y conectar la base de datos.</p>
+  </div>
   <div class="card">
     <div class="card-head verde">📷 Apunta la cámara al QR del niño</div>
-    <div id="reader" style="width:100%;min-height:300px"></div>
+    <div id="reader" style="width:100%"></div>
     <button id="btn-cam" onclick="toggleCam()" style="width:100%;padding:16px;background:var(--verde);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.3px">📷 Activar Cámara</button>
     <div id="scan-res"></div>
   </div>
@@ -256,13 +264,25 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
   <div class="alist" id="alist"></div>
 </div>
 
-<!-- EXCEL -->
+<!-- EXCEL + INSTRUCCIONES FIREBASE -->
 <div class="page" id="page-excel">
+  <div class="card">
+    <div class="card-head rojo">🔥 Cómo configurar Firebase (gratis)</div>
+    <div style="padding:14px">
+      <div class="info-box amber">
+        <p><strong>Paso 1 —</strong> Entra a <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> con tu cuenta Google → <strong>Crear un proyecto</strong> → ponle nombre (ej: "asistencia2do") → sin Analytics está bien.</p>
+        <p><strong>Paso 2 —</strong> En el menú izquierdo → <strong>Realtime Database</strong> → <strong>Crear base de datos</strong> → elige ubicación (Estados Unidos está bien) → <strong>Modo de prueba</strong> → Aceptar.</p>
+        <p><strong>Paso 3 —</strong> Regresa al inicio del proyecto → clic en el ícono <strong>&lt;/&gt;</strong> → registra app web → ponle nombre → copia el bloque que dice <strong>const firebaseConfig = { ... }</strong></p>
+        <p><strong>Paso 4 —</strong> Abre tu <strong>index.html</strong> → busca la sección marcada con 🔧 → reemplaza los 7 valores de <strong>firebaseConfig</strong> con los tuyos (apiKey, authDomain, etc.).</p>
+        <p><strong>Paso 5 —</strong> Guarda y sube a GitHub. Abre en cualquier celular → todos verán la asistencia al instante. ✅</p>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="card-head verde">🖨️ Imprimir QR de cada niño</div>
     <div style="padding:14px">
       <div class="info-box green">
-        <p>📌 Genera una hoja por cada niño con su QR correspondiente xd <strong>QR único</strong>. Solo las imprimes y haces la prueba</p>
+        <p>📌 Genera una hoja por cada niño con su <strong>QR único</strong>. Imprímelas,y hace la prueba correspondiente oki doki bai bai</p>
       </div>
       <button class="btn b-dark" onclick="imprimirTodos()" style="width:100%;justify-content:center;padding:14px;font-size:15px">🖨️ Imprimir QR de todos</button>
     </div>
@@ -270,6 +290,9 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
   <div class="card">
     <div class="card-head verde">📊 Exportar asistencia a Excel</div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+      <div class="info-box amber">
+        <p>Descarga el Excel con todos los días del año. <strong>P = Presente · A = Ausente</strong> por cada día hábil. Incluye % de asistencia.</p>
+      </div>
       <button class="btn b-dark" onclick="exportFull()" style="width:100%;justify-content:center;padding:14px;font-size:15px">📥 Excel completo (Mayo–Dic)</button>
       <button class="btn b-green" onclick="exportMes()" style="width:100%;justify-content:center;padding:13px">📄 Solo este mes</button>
     </div>
@@ -353,12 +376,7 @@ async function toggleCam(){
 
 async function startCam(){
   try{
-    if(typeof Html5Qrcode === 'undefined'){
-      toast('⚠️ Librería de escaneo no cargó. Verifica tu internet y recarga la página.');
-      const btn = document.getElementById('btn-cam');
-      btn.textContent = '📷 Activar Cámara'; btn.disabled = false;
-      return;
-    }
+    closeModal();
     const btn = document.getElementById('btn-cam');
     btn.textContent = '⏳ Iniciando...'; btn.disabled = true;
 
@@ -367,10 +385,11 @@ async function startCam(){
       {facingMode:'environment'},
       {fps:10, qrbox:{width:250,height:250}, aspectRatio:1.0},
       (decodedText) => {
+        // QR detectado
         stopCam();
         processQR(decodedText);
       },
-      (err) => {}
+      (err) => { /* ignorar errores de frame */ }
     );
 
     camOn = true;
@@ -385,7 +404,7 @@ async function startCam(){
     btn.textContent = '📷 Activar Cámara';
     btn.style.background = 'var(--verde)';
     btn.disabled = false;
-    toast('⚠️ ' + (e.message || 'No se pudo acceder a la cámara'));
+    toast('⚠️ No se pudo acceder a la cámara');
   }
 }
 
@@ -667,6 +686,14 @@ function hojaMes(wb,resumen=false,año=new Date().getFullYear(),mes=new Date().g
 document.getElementById('hdate').textContent=fmtDate(new Date());
 renderAlus(); renderRec();
 
+// Mostrar banner si Firebase no conectó en 3 segundos
+setTimeout(()=>{
+  if(!window._fbReady){
+    document.getElementById('setup-banner').classList.add('show');
+    document.getElementById('fb-status').textContent='🔴 Firebase no configurado';
+    document.getElementById('fb-status').style.color='#f5a0a0';
+  }
+},3000);
 </script>
 </body>
 </html>
