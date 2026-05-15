@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Asistencia 2° Primaria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <!-- Firebase -->
 <script type="module">
@@ -616,13 +616,57 @@ function renderAsist(){
   }).join('');
 }
 
-// ── EXCEL ──
+// ── EXCEL (xlsx-js-style — soporta colores y bordes reales) ──
+const XC={
+  darkBlue:'1A3A6B', cyan:'4DD0E1', lightCyan:'B2EBF2',
+  white:'FFFFFF', lightBlue:'DDEEFF', numBg:'BBDEFB',
+  rows:['FFFFFF','FFF9C4','E8F5E9','FCE4EC','F3E5F5','FFF3E0'],
+  pres:'C8E6C9', ause:'FFCDD2',
+  presText:'1B5E20', auseText:'B71C1C', hdrText:'1A3A6B'
+};
+const DL={1:'L',2:'M',3:'M',4:'J',5:'V'};
+
+function xlAddr(r,c){
+  let col='';let n=c;
+  while(n>0){col=String.fromCharCode(64+(n%26||26))+col;n=Math.floor((n-1)/26);}
+  return col+r;
+}
+function addMerge(ws,r1,c1,r2,c2){
+  if(!ws['!merges'])ws['!merges']=[];
+  ws['!merges'].push({s:{r:r1-1,c:c1-1},e:{r:r2-1,c:c2-1}});
+}
+function S(font={},fill,align={},border={}){
+  const s={};
+  s.font={name:'Arial',sz:font.sz||10,bold:!!font.bold,color:{rgb:font.color||'000000'}};
+  if(fill) s.fill={patternType:'solid',fgColor:{rgb:fill}};
+  s.alignment={horizontal:align.h||'center',vertical:align.v||'center',wrapText:!!align.wrap};
+  const tb=(w)=>({style:w==='thick'?'medium':'thin',color:{rgb:w==='thick'?XC.darkBlue:'4472C4'}});
+  s.border={
+    top:   tb(border.t||'thin'),
+    bottom:tb(border.b||'thin'),
+    left:  tb(border.l||'thin'),
+    right: tb(border.r||'thin')
+  };
+  return s;
+}
+function W(ws,addr,val,style){
+  const t=typeof val==='number'?'n':'s';
+  ws[addr]={v:val,t,s:style};
+}
+// Rellena todas las celdas de un rango merged con el mismo estilo (para que los bordes aparezcan)
+function fillRange(ws,r1,c1,r2,c2,val,style){
+  for(let r=r1;r<=r2;r++) for(let c=c1;c<=c2;c++){
+    const addr=xlAddr(r,c);
+    W(ws,addr,(r===r1&&c===c1)?val:'',style);
+  }
+}
+
 function exportFull(){
   if(!window.alumnos.length){toast('⚠️ Sin alumnos');return}
   const wb=XLSX.utils.book_new();
-  hojaMes(wb,true);
+  hojaResumen(wb);
   const now=new Date();
-  for(let m=now.getMonth();m<=11;m++) hojaMes(wb,false,now.getFullYear(),m);
+  for(let m=now.getMonth();m<=11;m++) hojaMes(wb,now.getFullYear(),m);
   XLSX.writeFile(wb,`Asistencia_2doPrimaria_${new Date().getFullYear()}.xlsx`);
   toast('✅ Excel descargado');
 }
@@ -630,43 +674,115 @@ function exportMes(){
   if(!window.alumnos.length){toast('⚠️ Sin alumnos');return}
   const wb=XLSX.utils.book_new();
   const now=new Date();
-  hojaMes(wb,false,now.getFullYear(),now.getMonth());
+  hojaMes(wb,now.getFullYear(),now.getMonth());
   XLSX.writeFile(wb,`Asistencia_${MESES[now.getMonth()]}.xlsx`);
   toast('✅ Excel del mes descargado');
 }
-function hojaMes(wb,resumen=false,año=new Date().getFullYear(),mes=new Date().getMonth()){
-  if(resumen){
-    const h=hoy();
-    const rows=[['RESUMEN DE ASISTENCIA — 2° DE PRIMARIA'],[''],['ALUMNO','PRESENTES','AUSENTES','% ASISTENCIA']];
-    window.alumnos.forEach(a=>{
-      let p=0,t=0;
-      Object.keys(window.asist).forEach(f=>{if(f<=h){t++;if(window.asist[f]&&window.asist[f][a.id])p++}});
-      rows.push([a.nombre,p,t-p,t?Math.round(p/t*100)+'%':'0%']);
-    });
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']=[{wch:34},{wch:12},{wch:12},{wch:14}];
-    XLSX.utils.book_append_sheet(wb,ws,'Resumen');
-    return;
-  }
-  const dias=[];
-  const d=new Date(año,mes,1);
-  while(d.getMonth()===mes){if(d.getDay()!==0&&d.getDay()!==6)dias.push(new Date(d));d.setDate(d.getDate()+1)}
+
+function hojaResumen(wb){
   const h=hoy();
-  const hdr=['Alumno',...dias.map(d=>`${d.getDate()}/${d.getMonth()+1}`),'Total P','%'];
-  const rows=[hdr];
-  window.alumnos.forEach(a=>{
-    let p=0;
-    const fila=[a.nombre,...dias.map(d=>{
-      const k=dk(d),r=window.asist[k]&&window.asist[k][a.id];
-      if(r){p++;return'P'} if(k<=h)return'A'; return'-';
-    })];
-    const dp=dias.filter(d=>dk(d)<=h).length;
-    fila.push(p,dp?Math.round(p/dp*100)+'%':'—');
-    rows.push(fila);
+  const nRows=window.alumnos.length+3;
+  const ws={'!ref':`A1:E${nRows}`,'!merges':[]};
+  addMerge(ws,1,1,1,5);
+  fillRange(ws,1,1,1,5,'RESUMEN DE ASISTENCIA — 2°B DE PRIMARIA',
+    S({bold:true,sz:14,color:XC.white},XC.darkBlue,{},{t:'thick',b:'thick',l:'thick',r:'thick'}));
+
+  const hdrCols=['ALUMNO','PRESENTES','AUSENTES','TOTAL DÍAS','% ASISTENCIA'];
+  hdrCols.forEach((h2,i)=>W(ws,xlAddr(2,i+1),h2,S({bold:true,color:XC.hdrText},XC.lightCyan)));
+
+  window.alumnos.forEach((a,idx)=>{
+    let p=0,t=0;
+    Object.keys(window.asist).forEach(f=>{if(f<=h){t++;if(window.asist[f]&&window.asist[f][a.id])p++;}});
+    const row=idx+3, bg=XC.rows[idx%XC.rows.length];
+    const st=S({},bg,{h:'left'});
+    W(ws,xlAddr(row,1),a.nombre,st);
+    W(ws,xlAddr(row,2),p,S({},bg));
+    W(ws,xlAddr(row,3),t-p,S({},bg));
+    W(ws,xlAddr(row,4),t,S({},bg));
+    W(ws,xlAddr(row,5),t?Math.round(p/t*100)+'%':'0%',S({},bg));
   });
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:28},...dias.map(()=>({wch:5})),{wch:8},{wch:7}];
-  XLSX.utils.book_append_sheet(wb,ws,MESES[mes].substr(0,8));
+  ws['!cols']=[{wch:34},{wch:12},{wch:12},{wch:12},{wch:14}];
+  XLSX.utils.book_append_sheet(wb,ws,'Resumen');
+}
+
+function hojaMes(wb,año,mes){
+  const dias=[];
+  const tmp=new Date(año,mes,1);
+  while(tmp.getMonth()===mes){
+    if(tmp.getDay()>=1&&tmp.getDay()<=5)dias.push(new Date(tmp));
+    tmp.setDate(tmp.getDate()+1);
+  }
+  const h=hoy();
+  const C_N=1, C_NM=2, C_D=3;
+  const lastC=C_D+dias.length-1;
+  const totalR=5+window.alumnos.length;
+  const ws={'!ref':`A1:${xlAddr(totalR,lastC)}`,'!merges':[]};
+
+  // ── FILA 1: TÍTULO ──
+  addMerge(ws,1,1,1,lastC);
+  fillRange(ws,1,1,1,lastC,'REGISTRO DE ASISTENCIA',
+    S({bold:true,sz:18,color:XC.white},XC.darkBlue,{},{t:'thick',b:'thick',l:'thick',r:'thick'}));
+
+  // ── FILA 2: GRADO / SECCIÓN / TURNO ──
+  const z=Math.floor(lastC/3);
+  const secciones=[
+    {label:'GRADO:',  val:'2°',      c1:1,    c2:Math.max(2,z-3), bc1:z-2,   bc2:z},
+    {label:'SECCIÓN:',val:'B',       c1:z+1,  c2:z+Math.max(2,z-3),bc1:2*z-2,bc2:2*z},
+    {label:'TURNO:',  val:'Mañana',  c1:2*z+1,c2:2*z+Math.max(2,z-3),bc1:3*z-2,bc2:lastC},
+  ];
+  // fill all row 2 with lightBlue first
+  for(let c=1;c<=lastC;c++) W(ws,xlAddr(2,c),'',S({},XC.lightBlue));
+  secciones.forEach(({label,val,c1,c2,bc1,bc2})=>{
+    if(c2>=c1){addMerge(ws,2,c1,2,c2);fillRange(ws,2,c1,2,c2,label,S({bold:true,sz:10,color:XC.hdrText},XC.lightBlue,{h:'right'}));}
+    if(bc2>=bc1){addMerge(ws,2,bc1,2,bc2);fillRange(ws,2,bc1,2,bc2,val,S({bold:true,sz:11,color:XC.hdrText},XC.white,{},{l:'thick',r:'thick',b:'thick'}));}
+  });
+
+  // ── FILAS 3-5: Nº y Nombre (merged 3 filas) ──
+  addMerge(ws,3,C_N,5,C_N);
+  fillRange(ws,3,C_N,5,C_N,'Nº',S({bold:true,sz:10,color:XC.white},XC.darkBlue,{},{l:'thick'}));
+  addMerge(ws,3,C_NM,5,C_NM);
+  fillRange(ws,3,C_NM,5,C_NM,'Apellidos y Nombres',S({bold:true,sz:10,color:XC.white},XC.darkBlue,{wrap:true}));
+
+  // ── FILA 3: MES header ──
+  addMerge(ws,3,C_D,3,lastC);
+  fillRange(ws,3,C_D,3,lastC,`MES:   ${MESES[mes].toUpperCase()}`,
+    S({bold:true,sz:12,color:XC.hdrText},XC.cyan,{},{r:'thick'}));
+
+  // ── FILA 4: Letras de días ──
+  dias.forEach((dd,i)=>{
+    const c=C_D+i, isLast=i===dias.length-1;
+    W(ws,xlAddr(4,c),DL[dd.getDay()]||'',
+      S({bold:true,sz:8,color:XC.hdrText},XC.lightCyan,{},{r:isLast?'thick':'thin'}));
+  });
+
+  // ── FILA 5: Números de días ──
+  dias.forEach((dd,i)=>{
+    const c=C_D+i, isLast=i===dias.length-1;
+    W(ws,xlAddr(5,c),dd.getDate(),
+      S({bold:true,sz:8,color:XC.hdrText},XC.lightCyan,{},{b:'thick',r:isLast?'thick':'thin'}));
+  });
+
+  // ── FILAS DE ALUMNOS ──
+  window.alumnos.forEach((a,idx)=>{
+    const row=6+idx, bg=XC.rows[idx%XC.rows.length];
+    const isLast=idx===window.alumnos.length-1;
+    const bBot=isLast?'thick':'thin';
+    W(ws,xlAddr(row,C_N),idx+1,S({bold:true,sz:9,color:XC.hdrText},XC.numBg,{},{l:'thick',b:bBot}));
+    W(ws,xlAddr(row,C_NM),a.nombre,S({sz:9},bg,{h:'left'},{b:bBot}));
+    dias.forEach((dd,i)=>{
+      const c=C_D+i, k=dk(dd), isLastC=i===dias.length-1;
+      const reg=window.asist[k]&&window.asist[k][a.id];
+      let val='', cellBg=bg, txtColor='888888';
+      if(reg){val='P';cellBg=XC.pres;txtColor=XC.presText;}
+      else if(k<=h){val='A';cellBg=XC.ause;txtColor=XC.auseText;}
+      W(ws,xlAddr(row,c),val,
+        S({sz:8,bold:!!val,color:txtColor},cellBg,{},{b:bBot,r:isLastC?'thick':'thin'}));
+    });
+  });
+
+  ws['!cols']=[{wch:4},{wch:30},...dias.map(()=>({wch:3.2}))];
+  ws['!rows']=[{hpt:36},{hpt:20},{hpt:18},{hpt:13},{hpt:13},...window.alumnos.map(()=>({hpt:15}))];
+  XLSX.utils.book_append_sheet(wb,ws,MESES[mes].substr(0,10));
 }
 
 // ── INIT ──
