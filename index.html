@@ -412,6 +412,9 @@ async function stopCam(){
   try{
     if(html5Qr){ await html5Qr.stop(); html5Qr.clear(); html5Qr = null; }
   }catch(e){}
+  // Limpiar y recrear el div reader para que arranque limpio la próxima vez
+  const reader = document.getElementById('reader');
+  if(reader){ reader.innerHTML = ''; }
   camOn = false;
   const btn = document.getElementById('btn-cam');
   btn.textContent = '📷 Activar Cámara';
