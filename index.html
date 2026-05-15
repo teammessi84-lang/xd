@@ -6,7 +6,7 @@
 <title>Asistencia 2° Primaria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <!-- Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -353,7 +353,12 @@ async function toggleCam(){
 
 async function startCam(){
   try{
-    closeModal();
+    if(typeof Html5Qrcode === 'undefined'){
+      toast('⚠️ Librería de escaneo no cargó. Verifica tu internet y recarga la página.');
+      const btn = document.getElementById('btn-cam');
+      btn.textContent = '📷 Activar Cámara'; btn.disabled = false;
+      return;
+    }
     const btn = document.getElementById('btn-cam');
     btn.textContent = '⏳ Iniciando...'; btn.disabled = true;
 
@@ -362,11 +367,10 @@ async function startCam(){
       {facingMode:'environment'},
       {fps:10, qrbox:{width:250,height:250}, aspectRatio:1.0},
       (decodedText) => {
-        // QR detectado
         stopCam();
         processQR(decodedText);
       },
-      (err) => { /* ignorar errores de frame */ }
+      (err) => {}
     );
 
     camOn = true;
@@ -381,7 +385,7 @@ async function startCam(){
     btn.textContent = '📷 Activar Cámara';
     btn.style.background = 'var(--verde)';
     btn.disabled = false;
-    toast('⚠️ No se pudo acceder a la cámara');
+    toast('⚠️ ' + (e.message || 'No se pudo acceder a la cámara'));
   }
 }
 
