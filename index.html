@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <!-- Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -165,12 +166,13 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
 .alist{display:flex;flex-direction:column;gap:5px}
 .ai2{background:#fff;border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
 .adot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
-.adot.p{background:var(--verde)}.adot.a{background:var(--rojo)}.adot.n{background:#ccc}
+.adot.p{background:var(--verde)}.adot.a{background:var(--rojo)}.adot.n{background:#ccc}.adot.t{background:var(--amber)}
 .aname{flex:1;font-weight:600;font-size:13px}
 .abadge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px}
 .abadge.p{background:var(--verde-c);color:var(--verde-o)}
 .abadge.a{background:var(--rojo-c);color:#8b1a1a}
 .abadge.n{background:var(--gris);color:#888}
+.abadge.t{background:var(--amber-c);color:#7a5200}
 .atime{font-size:11px;color:var(--txt2);min-width:42px;text-align:right}
 /* EXCEL */
 .info-box{border-radius:12px;padding:14px;margin-bottom:14px;border:1.5px solid}
@@ -264,9 +266,10 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
     <div class="card-head verde">🖨️ Imprimir QR de cada niño</div>
     <div style="padding:14px">
       <div class="info-box green">
-        <p>📌 Genera una hoja por cada niño con su <strong>QR único</strong>. Imprímelas, plastifícalas y entrégaselas.</p>
+        <p>📌 Genera un PDF con el QR de cada niño en orden. Imprímelo, recórtalos, plastifícalos y entrégaselos.</p>
       </div>
-      <button class="btn b-dark" onclick="imprimirTodos()" style="width:100%;justify-content:center;padding:14px;font-size:15px">🖨️ Imprimir QR de todos</button>
+      <button class="btn b-dark" onclick="generarPDFQR()" style="width:100%;justify-content:center;padding:14px;font-size:15px">📄 Descargar PDF con todos los QR</button>
+      <div id="pdf-progress" style="display:none;margin-top:12px;text-align:center;font-size:13px;color:var(--verde-o);font-weight:700"></div>
     </div>
   </div>
   <div class="card">
@@ -437,10 +440,18 @@ function processQR(data){
     res.innerHTML=`<div class="rcard warn"><div class="ico">⚠️</div><div><div class="rname">${a.nombre}</div><div class="rinfo">Ya marcó asistencia hoy a las ${h}</div></div></div>`;
   }else{
     const now=new Date();
-    const hora=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-    window.asist[fecha][a.id]={estado:'P',hora};
+    const hora=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false});
+    const [hh,mm]=hora.split(':').map(Number);
+    const minutos=hh*60+mm;
+    const limite=7*60+10; // 7:10
+    const estado=minutos<=limite?'P':'T'; // P=puntual, T=tardanza
+    window.asist[fecha][a.id]={estado,hora};
     saveAsist();
-    res.innerHTML=`<div class="rcard ok"><div class="ico">✅</div><div><div class="rname">${a.nombre}</div><div class="rinfo">Asistencia registrada a las ${hora} ✓</div></div></div>`;
+    if(estado==='P'){
+      res.innerHTML=`<div class="rcard ok"><div class="ico">✅</div><div><div class="rname">${a.nombre}</div><div class="rinfo">Asistencia registrada a las ${hora} ✓</div></div></div>`;
+    }else{
+      res.innerHTML=`<div class="rcard warn"><div class="ico">⏰</div><div><div class="rname">${a.nombre}</div><div class="rinfo">Tardanza registrada a las ${hora} (entrada: 7:10)</div></div></div>`;
+    }
     renderRec();
   }
   setTimeout(()=>{res.style.display='none'; _procesando=false; startCam();},3000);
@@ -564,37 +575,129 @@ function dlQR(){
   toast('✅ QR guardado');
 }
 
-// ── IMPRIMIR TODOS ──
-function imprimirTodos(){
+// ── GENERAR PDF CON QR ──
+function generarPDFQR(){
   if(!window.alumnos.length){toast('⚠️ No hay alumnos registrados');return}
-  const area=document.getElementById('print-area');
-  area.innerHTML='';
-  let pending=window.alumnos.length;
-  window.alumnos.forEach(a=>{
-    const page=document.createElement('div');
-    page.className='print-page';
-    page.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;text-align:center;page-break-after:always';
-    const title=document.createElement('h2');
-    title.style.cssText='font-size:26px;font-weight:800;margin-bottom:6px;color:#1a1a1a;max-width:400px';
-    title.textContent=a.nombre;
-    const sub=document.createElement('p');
-    sub.style.cssText='font-size:16px;color:#555;margin-bottom:22px';
-    sub.textContent='2° de Primaria';
-    const qwrap=document.createElement('div');
-    qwrap.style.cssText='border:4px solid #1a9e6e;border-radius:12px;padding:10px;display:inline-block;background:#fff';
-    const school=document.createElement('p');
-    school.style.cssText='font-size:11px;color:#aaa;margin-top:18px';
-    school.textContent='ID: '+a.id;
-    page.appendChild(title);page.appendChild(sub);page.appendChild(qwrap);page.appendChild(school);
-    area.appendChild(page);
-    new QRCode(qwrap,{text:a.id,width:260,height:260,correctLevel:QRCode.CorrectLevel.H});
-    pending--;
-    if(pending===0){
-      area.style.display='block';
-      setTimeout(()=>{window.print();setTimeout(()=>{area.style.display='none';area.innerHTML=''},800)},800);
+  const prog=document.getElementById('pdf-progress');
+  prog.style.display='block';
+  prog.textContent='⏳ Generando QR...';
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const PW=210, PH=297;
+  // 2 tarjetas por página, cada una ocupa mitad de la hoja
+  const cardW=PW, cardH=PH/2;
+
+  // Genera el QR de un alumno como dataURL usando un canvas oculto
+  function qrToDataURL(text){
+    return new Promise(resolve=>{
+      const div=document.createElement('div');
+      div.style.cssText='position:fixed;left:-9999px;top:-9999px';
+      document.body.appendChild(div);
+      const qr=new QRCode(div,{text,width:300,height:300,correctLevel:QRCode.CorrectLevel.H});
+      setTimeout(()=>{
+        const img=div.querySelector('img')||div.querySelector('canvas');
+        let url='';
+        if(img&&img.tagName==='IMG') url=img.src;
+        else if(img&&img.tagName==='CANVAS') url=img.toDataURL('image/png');
+        document.body.removeChild(div);
+        resolve(url);
+      },120);
+    });
+  }
+
+  async function buildPDF(){
+    for(let i=0;i<window.alumnos.length;i++){
+      const a=window.alumnos[i];
+      prog.textContent=`⏳ Generando ${i+1} de ${window.alumnos.length}...`;
+
+      // Nueva página cada 2 alumnos (excepto el primero)
+      if(i>0 && i%2===0) pdf.addPage();
+
+      // Posición vertical: tarjeta superior (0) o inferior (1)
+      const slot=i%2;
+      const yBase=slot*cardH;
+
+      // Fondo de la tarjeta
+      pdf.setFillColor(26,58,107); // azul oscuro
+      pdf.rect(0, yBase, cardW, cardH, 'F');
+
+      // Banda superior decorativa
+      pdf.setFillColor(77,208,225); // cyan
+      pdf.rect(0, yBase, cardW, 12, 'F');
+
+      // Título institución
+      pdf.setTextColor(26,58,107);
+      pdf.setFont('helvetica','bold');
+      pdf.setFontSize(9);
+      pdf.text('REGISTRO DE ASISTENCIA — 2°B DE PRIMARIA', PW/2, yBase+8, {align:'center'});
+
+      // Número de orden
+      pdf.setFillColor(255,255,255);
+      pdf.roundedRect(8, yBase+16, 14, 14, 3, 3, 'F');
+      pdf.setTextColor(26,58,107);
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica','bold');
+      pdf.text(String(i+1), 15, yBase+26, {align:'center'});
+
+      // Nombre del alumno
+      pdf.setTextColor(255,255,255);
+      pdf.setFontSize(13);
+      pdf.setFont('helvetica','bold');
+      // Dividir nombre si es muy largo
+      const nombreLines=pdf.splitTextToSize(a.nombre, 140);
+      const nameY=yBase+(nombreLines.length>1?24:28);
+      pdf.text(nombreLines, PW/2, nameY, {align:'center'});
+
+      // Sub grado
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica','normal');
+      pdf.setTextColor(180,230,255);
+      pdf.text('2° de Primaria', PW/2, yBase+36, {align:'center'});
+
+      // Imagen QR — centrada
+      const qrURL=await qrToDataURL(a.id);
+      if(qrURL){
+        const qrSize=55;
+        const qrX=(PW-qrSize)/2;
+        const qrY=yBase+40;
+        // Fondo blanco para el QR
+        pdf.setFillColor(255,255,255);
+        pdf.roundedRect(qrX-4, qrY-4, qrSize+8, qrSize+8, 4, 4, 'F');
+        pdf.addImage(qrURL,'PNG', qrX, qrY, qrSize, qrSize);
+      }
+
+      // ID pequeño
+      pdf.setTextColor(160,210,255);
+      pdf.setFontSize(7);
+      pdf.setFont('helvetica','normal');
+      pdf.text('ID: '+a.id, PW/2, yBase+103, {align:'center'});
+
+      // Línea divisoria entre tarjetas (solo si hay 2 en la página)
+      if(slot===0 && i+1<window.alumnos.length){
+        pdf.setDrawColor(77,208,225);
+        pdf.setLineWidth(0.5);
+        pdf.setLineDashPattern([3,3],0);
+        pdf.line(10, yBase+cardH, PW-10, yBase+cardH);
+        pdf.setLineDashPattern([],0);
+      }
     }
+
+    pdf.save(`QR_Alumnos_2doPrimaria.pdf`);
+    prog.textContent='✅ PDF descargado con '+window.alumnos.length+' QR';
+    setTimeout(()=>{ prog.style.display='none'; },3000);
+    toast('✅ PDF con '+window.alumnos.length+' QR descargado');
+  }
+
+  buildPDF().catch(e=>{
+    console.error(e);
+    prog.style.display='none';
+    toast('⚠️ Error al generar PDF');
   });
 }
+
+// ── IMPRIMIR TODOS (mantener por compatibilidad) ──
+function imprimirTodos(){ generarPDFQR(); }
 
 // ── ASISTENCIA ──
 function moveFecha(d){fechaV=new Date(fechaV);fechaV.setDate(fechaV.getDate()+d);renderAsist()}
@@ -610,9 +713,10 @@ function renderAsist(){
   if(!window.alumnos.length){el.innerHTML=`<div class="empty"><div class="ei">👥</div><div>Sin alumnos</div></div>`;return}
   el.innerHTML=window.alumnos.map(a=>{
     const r=data[a.id];
-    const cls=r?'p':(key<=h?'a':'n');
-    const lbl=r?'Presente':(key<=h?'Ausente':'—');
-    return`<div class="ai2"><div class="adot ${cls}"></div><div class="aname">${a.nombre}</div><div class="abadge ${cls}">${lbl}</div><div class="atime">${r?r.hora:''}</div></div>`;
+    let cls,lbl;
+    if(r){cls=r.estado==='T'?'t':'p';lbl=r.estado==='T'?`Tardanza (${r.hora})`:`Presente (${r.hora})`;}
+    else{cls=key<=h?'a':'n';lbl=key<=h?'Falta':'—';}
+    return`<div class="ai2"><div class="adot ${cls}"></div><div class="aname">${a.nombre}</div><div class="abadge ${cls}">${lbl}</div></div>`;
   }).join('');
 }
 
@@ -621,8 +725,10 @@ const XC={
   darkBlue:'1A3A6B', cyan:'4DD0E1', lightCyan:'B2EBF2',
   white:'FFFFFF', lightBlue:'DDEEFF', numBg:'BBDEFB',
   rows:['FFFFFF','FFF9C4','E8F5E9','FCE4EC','F3E5F5','FFF3E0'],
-  pres:'C8E6C9', ause:'FFCDD2',
-  presText:'1B5E20', auseText:'B71C1C', hdrText:'1A3A6B'
+  pres:'C8E6C9',  presText:'1B5E20',   // verde — presente (·)
+  tard:'FFF3CD',  tardText:'7A4F00',   // ámbar — tardanza (T)
+  ause:'FFCDD2',  auseText:'B71C1C',   // rojo — falta (F)
+  hdrText:'1A3A6B'
 };
 const DL={1:'L',2:'M',3:'M',4:'J',5:'V'};
 
@@ -682,26 +788,33 @@ function exportMes(){
 function hojaResumen(wb){
   const h=hoy();
   const nRows=window.alumnos.length+3;
-  const ws={'!ref':`A1:E${nRows}`,'!merges':[]};
-  addMerge(ws,1,1,1,5);
-  fillRange(ws,1,1,1,5,'RESUMEN DE ASISTENCIA — 2°B DE PRIMARIA',
+  const ws={'!ref':`A1:F${nRows}`,'!merges':[]};
+  addMerge(ws,1,1,1,6);
+  fillRange(ws,1,1,1,6,'RESUMEN DE ASISTENCIA — 2°B DE PRIMARIA',
     S({bold:true,sz:14,color:XC.white},XC.darkBlue,{},{t:'thick',b:'thick',l:'thick',r:'thick'}));
 
-  const hdrCols=['ALUMNO','PRESENTES','AUSENTES','TOTAL DÍAS','% ASISTENCIA'];
+  const hdrCols=['ALUMNO','PRESENTES (●)','TARDANZAS (T)','FALTAS (F)','TOTAL DÍAS','% ASISTENCIA'];
   hdrCols.forEach((h2,i)=>W(ws,xlAddr(2,i+1),h2,S({bold:true,color:XC.hdrText},XC.lightCyan)));
 
   window.alumnos.forEach((a,idx)=>{
-    let p=0,t=0;
-    Object.keys(window.asist).forEach(f=>{if(f<=h){t++;if(window.asist[f]&&window.asist[f][a.id])p++;}});
+    let p=0,t=0,f=0,total=0;
+    Object.keys(window.asist).forEach(fecha=>{
+      if(fecha<=h){
+        total++;
+        const reg=window.asist[fecha]&&window.asist[fecha][a.id];
+        if(reg){if(reg.estado==='T')t++;else p++;}
+        else f++;
+      }
+    });
     const row=idx+3, bg=XC.rows[idx%XC.rows.length];
-    const st=S({},bg,{h:'left'});
-    W(ws,xlAddr(row,1),a.nombre,st);
-    W(ws,xlAddr(row,2),p,S({},bg));
-    W(ws,xlAddr(row,3),t-p,S({},bg));
-    W(ws,xlAddr(row,4),t,S({},bg));
-    W(ws,xlAddr(row,5),t?Math.round(p/t*100)+'%':'0%',S({},bg));
+    W(ws,xlAddr(row,1),a.nombre,S({},bg,{h:'left'}));
+    W(ws,xlAddr(row,2),p,S({color:XC.presText},XC.pres));
+    W(ws,xlAddr(row,3),t,S({color:XC.tardText},XC.tard));
+    W(ws,xlAddr(row,4),f,S({color:XC.auseText},XC.ause));
+    W(ws,xlAddr(row,5),total,S({},bg));
+    W(ws,xlAddr(row,6),total?Math.round((p+t)/total*100)+'%':'0%',S({},bg));
   });
-  ws['!cols']=[{wch:34},{wch:12},{wch:12},{wch:12},{wch:14}];
+  ws['!cols']=[{wch:34},{wch:14},{wch:14},{wch:12},{wch:12},{wch:14}];
   XLSX.utils.book_append_sheet(wb,ws,'Resumen');
 }
 
@@ -772,16 +885,23 @@ function hojaMes(wb,año,mes){
     dias.forEach((dd,i)=>{
       const c=C_D+i, k=dk(dd), isLastC=i===dias.length-1;
       const reg=window.asist[k]&&window.asist[k][a.id];
-      let val='', cellBg=bg, txtColor='888888';
-      if(reg){val='P';cellBg=XC.pres;txtColor=XC.presText;}
-      else if(k<=h){val='A';cellBg=XC.ause;txtColor=XC.auseText;}
+      let val='', cellBg=bg, txtColor='AAAAAA', wrap=false;
+      if(reg){
+        if(reg.estado==='T'){
+          val='T'; cellBg=XC.tard; txtColor=XC.tardText; wrap=false;
+        } else {
+          val='●'; cellBg=XC.pres; txtColor=XC.presText; wrap=false;
+        }
+      } else if(k<=h){
+        val='F'; cellBg=XC.ause; txtColor=XC.auseText;
+      }
       W(ws,xlAddr(row,c),val,
-        S({sz:8,bold:!!val,color:txtColor},cellBg,{},{b:bBot,r:isLastC?'thick':'thin'}));
+        S({sz: val==='●' ? 14 : 9, bold:!!val,color:txtColor},cellBg,{wrap},{b:bBot,r:isLastC?'thick':'thin'}));
     });
   });
 
-  ws['!cols']=[{wch:4},{wch:30},...dias.map(()=>({wch:3.2}))];
-  ws['!rows']=[{hpt:36},{hpt:20},{hpt:18},{hpt:13},{hpt:13},...window.alumnos.map(()=>({hpt:15}))];
+  ws['!cols']=[{wch:4},{wch:30},...dias.map(()=>({wch:5.5}))];
+  ws['!rows']=[{hpt:36},{hpt:20},{hpt:18},{hpt:13},{hpt:13},...window.alumnos.map(()=>({hpt:18}))];
   XLSX.utils.book_append_sheet(wb,ws,MESES[mes].substr(0,10));
 }
 
