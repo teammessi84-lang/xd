@@ -373,7 +373,9 @@ function tab(t){
 async function toggleCam(){camOn?stopCam():await startCam()}
 async function startCam(){
   try{
-    const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}};
+    // Cerrar modal si está abierto
+    closeModal();
+    const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}};
     stream=await navigator.mediaDevices.getUserMedia(constraints);
     const v=document.getElementById('video');
     v.srcObject=stream; v.style.display='block';
@@ -384,7 +386,9 @@ async function startCam(){
     const b=document.getElementById('btn-cam');
     b.textContent='⏹ Detener cámara'; b.classList.add('stop');
     camOn=true;
-    v.onloadedmetadata=()=>{v.play();scanLoop()};
+    await new Promise(res=>{ v.onloadedmetadata=()=>{ v.play(); setTimeout(res,800); }; });
+    scanLoop();
+    toast('📷 Cámara lista — acerca el QR al recuadro');
   }catch(e){
     console.error(e);
     toast('⚠️ No se pudo acceder a la cámara. Verifica los permisos.');
@@ -404,41 +408,62 @@ function stopCam(){
   camOn=false;
 }
 function scanLoop(){
-  animFrame=requestAnimationFrame(()=>{
-    if(!camOn) return;
-    const now=Date.now();
-    if(now-lastScan>100){lastScan=now;tryDecode()}
+  if(!camOn) return;
+  setTimeout(()=>{
+    tryDecode();
     scanLoop();
-  });
+  }, 300); // cada 300ms — más estable en móvil
 }
 function tryDecode(){
+  if(!camOn) return;
   const v=document.getElementById('video');
-  if(v.readyState<v.HAVE_ENOUGH_DATA||v.videoWidth===0) return;
+  if(!v||v.readyState<2||v.videoWidth===0||v.paused) return;
+
   const c=document.getElementById('canvas-hidden');
   const ctx=c.getContext('2d',{willReadFrequently:true});
-  c.width=v.videoWidth; c.height=v.videoHeight;
-  ctx.drawImage(v,0,0);
-  let result=decodeFromCanvas(ctx,c.width,c.height);
+
+  // Escalar a 640px máximo para rendimiento en móvil
+  const scale = Math.min(1, 640/v.videoWidth);
+  c.width  = Math.floor(v.videoWidth  * scale);
+  c.height = Math.floor(v.videoHeight * scale);
+  ctx.drawImage(v, 0, 0, c.width, c.height);
+
+  // Intento 1: imagen completa
+  let result = decodeFromCanvas(ctx, c.width, c.height);
+
+  // Intento 2: recorte central 60%
   if(!result){
-    const cx=Math.floor(c.width/2),cy=Math.floor(c.height/2);
-    const size=Math.min(c.width,c.height)*0.6;
-    const x0=Math.max(0,cx-size/2),y0=Math.max(0,cy-size/2);
-    const cropW=Math.min(size,c.width-x0),cropH=Math.min(size,c.height-y0);
-    const c2=document.createElement('canvas');
-    c2.width=400;c2.height=400;
-    const ctx2=c2.getContext('2d',{willReadFrequently:true});
-    ctx2.drawImage(c,x0,y0,cropW,cropH,0,0,400,400);
-    result=decodeFromCanvas(ctx2,400,400);
+    const size = Math.floor(Math.min(c.width, c.height) * 0.65);
+    const x0   = Math.floor((c.width  - size) / 2);
+    const y0   = Math.floor((c.height - size) / 2);
+    const crop = ctx.getImageData(x0, y0, size, size);
+    const c2   = document.createElement('canvas');
+    c2.width = c2.height = size;
+    c2.getContext('2d').putImageData(crop, 0, 0);
+    result = decodeFromCanvas(c2.getContext('2d',{willReadFrequently:true}), size, size);
   }
-  if(result){stopCam();processQR(result)}
+
+  // Intento 3: imagen en escala de grises (mejor contraste)
+  if(!result){
+    const imgData = ctx.getImageData(0,0,c.width,c.height);
+    const d = imgData.data;
+    for(let i=0;i<d.length;i+=4){
+      const g = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+      d[i]=d[i+1]=d[i+2]=g;
+    }
+    ctx.putImageData(imgData,0,0);
+    result = decodeFromCanvas(ctx, c.width, c.height);
+  }
+
+  if(result){ stopCam(); processQR(result); }
 }
-function decodeFromCanvas(ctx,w,h){
+function decodeFromCanvas(ctx, w, h){
   try{
-    if(typeof jsQR==='undefined'){console.warn('jsQR no disponible');return null}
-    const imageData=ctx.getImageData(0,0,w,h);
-    const code=jsQR(imageData.data,imageData.width,imageData.height,{inversionAttempts:'attemptBoth'});
-    return code?code.data:null;
-  }catch(e){return null}
+    if(typeof jsQR==='undefined') return null;
+    const imageData = ctx.getImageData(0,0,w,h);
+    const code = jsQR(imageData.data, w, h, {inversionAttempts:'attemptBoth'});
+    return code ? code.data : null;
+  }catch(e){ return null; }
 }
 function processQR(data){
   let id=data.trim();
