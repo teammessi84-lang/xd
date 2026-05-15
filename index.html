@@ -6,7 +6,7 @@
 <title>Asistencia 2° Primaria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <!-- Firebase -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -224,18 +224,8 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
   </div>
   <div class="card">
     <div class="card-head verde">📷 Apunta la cámara al QR del niño</div>
-    <div id="video-wrap">
-      <div id="ph"><div class="phi">📷</div><p>Toca el botón de abajo<br>para activar la cámara</p></div>
-      <video id="video" autoplay playsinline muted></video>
-      <div id="overlay">
-        <div class="corner tl"></div><div class="corner tr"></div>
-        <div class="corner bl"></div><div class="corner br"></div>
-        <div class="scan-line" id="scan-line"></div>
-      </div>
-    </div>
-    <div id="scan-status">🔍 Buscando QR... mantén el código dentro del recuadro</div>
-    <button id="btn-cam" onclick="toggleCam()">📷 Activar Cámara</button>
-    <canvas id="canvas-hidden"></canvas>
+    <div id="reader" style="width:100%"></div>
+    <button id="btn-cam" onclick="toggleCam()" style="width:100%;padding:16px;background:var(--verde);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.3px">📷 Activar Cámara</button>
     <div id="scan-res"></div>
   </div>
   <div class="card">
@@ -330,7 +320,7 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
 // ── ESTADO (sincronizado con Firebase en tiempo real) ──
 window.alumnos = [];
 window.asist   = {};
-let camOn=false, stream=null, animFrame=null, lastScan=0;
+let camOn=false;
 let fechaV = new Date();
 let qrA = null;
 
@@ -369,129 +359,58 @@ function tab(t){
   if(camOn && t!=='scanner') stopCam();
 }
 
-// ── CÁMARA ──
-let _barcodeDetector = null;
-let _scanTimer = null;
-let _scanning = false;
+// ── CÁMARA con html5-qrcode ──
+let html5Qr = null;
 
-// Detectar si el navegador soporta BarcodeDetector nativo (Android Chrome)
-async function _initDetector(){
-  try{
-    if('BarcodeDetector' in window){
-      const formats = await BarcodeDetector.getSupportedFormats();
-      if(formats.includes('qr_code')){
-        _barcodeDetector = new BarcodeDetector({formats:['qr_code']});
-        console.log('✅ BarcodeDetector nativo disponible');
-        return;
-      }
-    }
-  }catch(e){}
-  console.log('ℹ️ Usando jsQR como fallback');
+async function toggleCam(){
+  if(camOn){ await stopCam(); } else { await startCam(); }
 }
-_initDetector();
-
-async function toggleCam(){camOn?stopCam():await startCam()}
 
 async function startCam(){
   try{
     closeModal();
-    // Resolución media — más confiable en gama media Android
-    const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}};
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const v = document.getElementById('video');
-    v.srcObject = stream;
-    v.style.display = 'block';
-    document.getElementById('overlay').style.display = 'block';
-    document.getElementById('scan-line').style.display = 'block';
-    document.getElementById('ph').style.display = 'none';
-    document.getElementById('scan-status').style.display = 'block';
-    const b = document.getElementById('btn-cam');
-    b.textContent = '⏹ Detener cámara'; b.classList.add('stop');
+    const btn = document.getElementById('btn-cam');
+    btn.textContent = '⏳ Iniciando...'; btn.disabled = true;
+
+    html5Qr = new Html5Qrcode('reader');
+    await html5Qr.start(
+      {facingMode:'environment'},
+      {fps:10, qrbox:{width:250,height:250}, aspectRatio:1.0},
+      (decodedText) => {
+        // QR detectado
+        stopCam();
+        processQR(decodedText);
+      },
+      (err) => { /* ignorar errores de frame */ }
+    );
+
     camOn = true;
-
-    // Esperar que el video esté realmente listo
-    await new Promise(res => {
-      v.onloadeddata = () => { v.onloadeddata = null; res(); };
-      v.play();
-      // Fallback: si en 4s no dispara, continuar igual
-      setTimeout(res, 4000);
-    });
-
-    toast('📷 Cámara lista — acerca el QR al recuadro');
-    _startScanLoop();
+    btn.textContent = '⏹ Detener cámara';
+    btn.style.background = 'var(--rojo)';
+    btn.disabled = false;
+    toast('📷 Cámara lista — acerca el QR');
   }catch(e){
-    console.error('startCam error:', e);
+    console.error('startCam:', e);
     camOn = false;
-    toast('⚠️ No se pudo acceder a la cámara. Verifica los permisos.');
+    const btn = document.getElementById('btn-cam');
+    btn.textContent = '📷 Activar Cámara';
+    btn.style.background = 'var(--verde)';
+    btn.disabled = false;
+    toast('⚠️ No se pudo acceder a la cámara');
   }
 }
 
-function stopCam(){
+async function stopCam(){
+  try{
+    if(html5Qr){ await html5Qr.stop(); html5Qr.clear(); html5Qr = null; }
+  }catch(e){}
   camOn = false;
-  _scanning = false;
-  if(_scanTimer){ clearTimeout(_scanTimer); _scanTimer = null; }
-  if(animFrame){ cancelAnimationFrame(animFrame); animFrame = null; }
-  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
-  const v = document.getElementById('video');
-  v.pause(); v.srcObject = null; v.style.display = 'none';
-  document.getElementById('overlay').style.display = 'none';
-  document.getElementById('scan-line').style.display = 'none';
-  document.getElementById('ph').style.display = 'block';
-  document.getElementById('scan-status').style.display = 'none';
-  const b = document.getElementById('btn-cam');
-  b.textContent = '📷 Activar Cámara'; b.classList.remove('stop');
+  const btn = document.getElementById('btn-cam');
+  btn.textContent = '📷 Activar Cámara';
+  btn.style.background = 'var(--verde)';
+  btn.disabled = false;
 }
 
-function _startScanLoop(){
-  if(!camOn) return;
-  _scanning = true;
-  _scanTick();
-}
-
-function _scanTick(){
-  if(!camOn || !_scanning) return;
-  _scanTimer = setTimeout(async ()=>{
-    try{ await _tryDecode(); }catch(e){}
-    if(camOn && _scanning) _scanTick();
-  }, 300);
-}
-
-async function _tryDecode(){
-  const v = document.getElementById('video');
-  if(!v || !camOn) return;
-  if(v.readyState < 2 || v.videoWidth === 0 || v.videoHeight === 0) return;
-
-  let result = null;
-
-  // MÉTODO 1: BarcodeDetector nativo (mucho más rápido y preciso)
-  if(_barcodeDetector){
-    try{
-      const codes = await _barcodeDetector.detect(v);
-      if(codes && codes.length > 0) result = codes[0].rawValue;
-    }catch(e){ _barcodeDetector = null; } // si falla, caer a jsQR
-  }
-
-  // MÉTODO 2: jsQR vía canvas (fallback universal)
-  if(!result && typeof jsQR !== 'undefined'){
-    const c = document.getElementById('canvas-hidden');
-    const ctx = c.getContext('2d', {willReadFrequently:true});
-    const W = Math.min(v.videoWidth, 640);
-    const H = Math.round(v.videoHeight * W / v.videoWidth);
-    c.width = W; c.height = H;
-    try{
-      ctx.drawImage(v, 0, 0, W, H);
-      const imgData = ctx.getImageData(0, 0, W, H);
-      const code = jsQR(imgData.data, W, H, {inversionAttempts:'attemptBoth'});
-      if(code) result = code.data;
-    }catch(e){}
-  }
-
-  if(result){
-    _scanning = false;
-    stopCam();
-    processQR(result);
-  }
-}
 function processQR(data){
   let id=data.trim();
   try{const p=JSON.parse(data);id=p.id||id}catch(e){}
