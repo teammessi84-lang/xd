@@ -320,7 +320,14 @@ function dk(d){return d.toISOString().split('T')[0]}
 function hoy(){return dk(new Date())}
 function fmtDate(d){return `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]} ${d.getFullYear()}`}
 function toast(m,t=2800){const e=document.getElementById('toast');e.textContent=m;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),t)}
-function gid(){return 'N'+Date.now().toString(36).toUpperCase()+Math.random().toString(36).substr(2,3).toUpperCase()}
+// ID fijo basado en el nombre — mismo nombre = mismo ID siempre
+function gid(nombre){
+  let hash = 5381;
+  const s = nombre.toUpperCase().replace(/\s+/g,'');
+  for(let i=0;i<s.length;i++) hash = ((hash<<5)+hash) ^ s.charCodeAt(i);
+  const h = Math.abs(hash).toString(36).toUpperCase().padStart(8,'0');
+  return 'QR' + h;
+}
 function ini(n){return n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 
 // ── GUARDAR EN FIREBASE ──
@@ -466,7 +473,7 @@ function addAlumno(){
   const n=document.getElementById('inp-n').value.trim();
   if(!n){toast('⚠️ Escribe el nombre');return}
   if(window.alumnos.find(a=>a.nombre.toLowerCase()===n.toLowerCase())){toast('⚠️ Ya existe');return}
-  window.alumnos.push({id:gid(),nombre:n,grado:'2° Primaria'});
+  window.alumnos.push({id:gid(n),nombre:n,grado:'2° Primaria'});
   saveAlumnos();
   document.getElementById('inp-n').value='';
   renderAlus(); toast('✅ '+n+' agregado');
@@ -487,7 +494,7 @@ function loadDemo(){
     'VILELA RIVAS, Thiago Alonso'
   ];
   let added=0;
-  demo.forEach(n=>{if(!window.alumnos.find(a=>a.nombre===n)){window.alumnos.push({id:gid(),nombre:n,grado:'2° Primaria'});added++}});
+  demo.forEach(n=>{if(!window.alumnos.find(a=>a.nombre===n)){window.alumnos.push({id:gid(n),nombre:n,grado:'2° Primaria'});added++}});
   if(added>0){saveAlumnos();renderAlus();toast(`✅ ${added} alumnos guardados en Firebase`)}
   else toast('ℹ️ Los alumnos ya están cargados');
 }
