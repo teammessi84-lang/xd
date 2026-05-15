@@ -236,7 +236,7 @@ header p{font-size:10px;opacity:.75;margin-top:1px}
     <div class="form-g"><label>Nombre completo</label><input id="inp-n" placeholder="Ej: GARCIA MENDOZA, Luciana" onkeydown="if(event.key==='Enter')addAlumno()"/></div>
     <div class="form-acts">
       <button class="btn b-green" onclick="addAlumno()">➕ Agregar</button>
-      <button class="btn b-amber" onclick="loadDemo()">📋 Cargar mis 23 alumnos</button>
+      <button class="btn b-amber" onclick="loadDemo()">🔄 Resetear IDs fijos (hacer 1 vez)</button>
     </div>
   </div>
   <div class="card">
@@ -493,10 +493,11 @@ function loadDemo(){
     'URCIA CACERES, Lia Valentina','VARGAS SEGURA, Gala Alice',
     'VILELA RIVAS, Thiago Alonso'
   ];
-  let added=0;
-  demo.forEach(n=>{if(!window.alumnos.find(a=>a.nombre===n)){window.alumnos.push({id:gid(n),nombre:n,grado:'2° Primaria'});added++}});
-  if(added>0){saveAlumnos();renderAlus();toast(`✅ ${added} alumnos guardados en Firebase`)}
-  else toast('ℹ️ Los alumnos ya están cargados');
+  // Siempre reemplaza TODOS con IDs fijos basados en nombre
+  window.alumnos = demo.map(n=>({id:gid(n), nombre:n, grado:'2° Primaria'}));
+  saveAlumnos();
+  renderAlus();
+  toast('✅ 23 alumnos cargados con IDs fijos');
 }
 function delAlumno(id){
   if(!confirm('¿Eliminar este alumno?')) return;
