@@ -6,6 +6,51 @@
 <title>Asistencia 2° Primaria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ════════════════════════════════════════════════
+  // 🔧 PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE
+  // ════════════════════════════════════════════════
+  const firebaseConfig = {
+    apiKey: "AIzaSyCd489bwHV_bPfLGVLaKYfOzsJpNqtHqzQ",
+    authDomain: "asistencia2do-43d0b.firebaseapp.com",
+    databaseURL: "https://asistencia2do-43d0b-default-rtdb.firebaseio.com",
+    projectId: "asistencia2do-43d0b",
+    storageBucket: "asistencia2do-43d0b.firebasestorage.app",
+    messagingSenderId: "266733492959",
+    appId: "1:266733492959:web:2795f9e0cfe3a4e5cba76a"
+  };
+  // ════════════════════════════════════════════════
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+  window._db  = db;
+  window._ref = ref;
+  window._set = set;
+  window._fbReady = true;
+  document.getElementById('fb-status').textContent = '🟢 Conectado · Tiempo real activo';
+  document.getElementById('fb-status').style.color = '#7de0bc';
+
+  // Escuchar alumnos en tiempo real
+  onValue(ref(db,'alumnos'), snap=>{
+    const val = snap.val();
+    window.alumnos = val ? Object.values(val) : [];
+    renderAlus(); renderRec();
+    if(document.getElementById('page-asistencia').classList.contains('active')) renderAsist();
+  });
+
+  // Escuchar asistencia en tiempo real
+  onValue(ref(db,'asistencia'), snap=>{
+    const val = snap.val();
+    window.asist = val || {};
+    renderRec();
+    if(document.getElementById('page-asistencia').classList.contains('active')) renderAsist();
+  });
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -18,10 +63,11 @@
   --amber:#e09a1a;--amber-c:#fdf3e0;
 }
 body{font-family:'Nunito',sans-serif;background:#f0f7f4;color:var(--txt);min-height:100vh}
-header{background:var(--verde-o);color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.25)}
-.logo{font-size:26px}
-header h1{font-size:17px;font-weight:800}
-header p{font-size:11px;opacity:.75;margin-top:1px}
+header{background:var(--verde-o);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.logo{font-size:24px}
+header h1{font-size:16px;font-weight:800}
+header p{font-size:10px;opacity:.75;margin-top:1px}
+#fb-status{font-size:10px;font-weight:700;margin-top:2px;color:#f5c97a;opacity:1}
 .tabs{display:flex;background:var(--verde-o);border-top:1px solid rgba(255,255,255,.12)}
 .tab{flex:1;padding:11px 6px;text-align:center;color:rgba(255,255,255,.55);cursor:pointer;font-size:11px;font-weight:700;border-bottom:3px solid transparent;transition:.2s;user-select:none}
 .tab.active{color:#fff;border-bottom-color:#7de0bc;background:rgba(255,255,255,.07)}
@@ -33,21 +79,25 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 .card-head.verde{background:var(--verde-c);color:var(--verde-o)}
 .card-head.azul{background:var(--azul-c);color:var(--azul)}
 .card-head.amber{background:var(--amber-c);color:#7a5200}
-
+.card-head.rojo{background:var(--rojo-c);color:var(--rojo)}
+/* SETUP BANNER */
+#setup-banner{background:var(--amber-c);border:2px dashed var(--amber);border-radius:14px;padding:16px;margin-bottom:14px;display:none}
+#setup-banner.show{display:block}
+#setup-banner h3{font-size:15px;font-weight:800;color:#7a5200;margin-bottom:6px}
+#setup-banner p{font-size:13px;line-height:1.7;color:#5a3a00}
 /* SCANNER */
-#video-wrap{position:relative;background:#0d0d0d;min-height:300px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#video{width:100%;max-height:340px;object-fit:cover;display:none}
+#video-wrap{position:relative;background:#0d0d0d;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#video{width:100%;max-height:320px;object-fit:cover;display:none}
 #overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.5);display:none;pointer-events:none}
 .corner{position:absolute;width:24px;height:24px;border-color:#fff;border-style:solid}
 .tl{top:-3px;left:-3px;border-width:3px 0 0 3px;border-radius:3px 0 0 3px}
 .tr{top:-3px;right:-3px;border-width:3px 3px 0 0;border-radius:0 3px 0 0}
 .bl{bottom:-3px;left:-3px;border-width:0 0 3px 3px;border-radius:0 0 0 3px}
 .br{bottom:-3px;right:-3px;border-width:0 3px 3px 0;border-radius:0 0 3px 0}
-/* línea de escaneo animada */
 .scan-line{position:absolute;left:10%;width:80%;height:2px;background:linear-gradient(90deg,transparent,var(--verde),transparent);animation:scanAnim 1.8s ease-in-out infinite;display:none}
 @keyframes scanAnim{0%{top:15%}50%{top:82%}100%{top:15%}}
-#ph{text-align:center;color:#888;padding:50px 20px}
-#ph .phi{font-size:56px;margin-bottom:12px}
+#ph{text-align:center;color:#888;padding:40px 20px}
+#ph .phi{font-size:52px;margin-bottom:10px}
 #ph p{font-size:14px;line-height:1.6}
 #canvas-hidden{display:none}
 #btn-cam{width:100%;padding:16px;background:var(--verde);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.3px;transition:.2s}
@@ -68,7 +118,6 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 .rdot{width:10px;height:10px;border-radius:50%;background:var(--verde);flex-shrink:0}
 .rn{flex:1;font-weight:600;font-size:14px}
 .rh{font-size:12px;color:var(--txt2);font-weight:600}
-
 /* ALUMNOS */
 .form-g{padding:11px 15px;border-bottom:1px solid var(--gris)}
 .form-g label{font-size:11px;color:var(--txt2);font-weight:700;margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:.5px}
@@ -77,12 +126,10 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 .form-acts{padding:12px 15px;display:flex;gap:8px;flex-wrap:wrap}
 .btn{padding:10px 16px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;transition:.15s}
 .btn:active{transform:scale(.97)}
-.b-green{background:var(--verde);color:#fff}
-.b-green:hover{background:var(--verde-o)}
+.b-green{background:var(--verde);color:#fff}.b-green:hover{background:var(--verde-o)}
 .b-red{background:var(--rojo-c);color:var(--rojo)}
 .b-blue{background:var(--azul-c);color:var(--azul)}
-.b-dark{background:var(--verde-o);color:#fff}
-.b-dark:hover{background:#062a1d}
+.b-dark{background:var(--verde-o);color:#fff}.b-dark:hover{background:#062a1d}
 .b-amber{background:var(--amber-c);color:#7a5200}
 .alu-list{padding:6px}
 .alu{display:flex;align-items:center;gap:11px;padding:11px;border-radius:11px;margin-bottom:3px;transition:.15s}
@@ -96,7 +143,6 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 .bic:active{transform:scale(.92)}
 .bqr{background:var(--azul-c);color:var(--azul)}
 .bdel{background:var(--rojo-c);color:var(--rojo)}
-
 /* MODAL */
 .moverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:20px}
 .moverlay.open{display:flex}
@@ -108,15 +154,12 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 #qr-box canvas,#qr-box img{border-radius:10px;border:4px solid var(--verde-c)}
 .mbtns{display:flex;gap:8px}
 .mbtns .btn{flex:1;justify-content:center;font-size:13px}
-
 /* ASISTENCIA */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
 .scard{background:#fff;border-radius:12px;padding:13px 8px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06)}
 .snum{font-size:26px;font-weight:800}
 .slbl{font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
-.scard.v .snum{color:var(--verde)}
-.scard.r .snum{color:var(--rojo)}
-.scard.a .snum{color:var(--azul)}
+.scard.v .snum{color:var(--verde)}.scard.r .snum{color:var(--rojo)}.scard.a .snum{color:var(--azul)}
 .dnav{display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:12px;padding:11px 14px;margin-bottom:10px;box-shadow:0 2px 6px rgba(0,0,0,.06)}
 .dnav button{background:var(--gris);border:none;border-radius:8px;padding:7px 13px;font-size:17px;cursor:pointer}
 .dlbl{font-weight:700;font-size:14px;text-align:center}
@@ -131,23 +174,20 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 .abadge.a{background:var(--rojo-c);color:#8b1a1a}
 .abadge.n{background:var(--gris);color:#888}
 .atime{font-size:11px;color:var(--txt2);min-width:42px;text-align:right}
-
 /* EXCEL */
 .info-box{border-radius:12px;padding:14px;margin-bottom:14px;border:1.5px solid}
 .info-box.green{background:var(--verde-c);border-color:#a0dfc4;color:var(--verde-o)}
 .info-box.amber{background:var(--amber-c);border-color:#f5c97a;color:#7a5200}
-.info-box p{font-size:13px;line-height:1.75}
+.info-box p{font-size:13px;line-height:1.8;margin-bottom:4px}
 .info-box strong{font-weight:700}
-
+.info-box a{color:var(--azul);font-weight:700}
 /* EMPTY */
 .empty{text-align:center;padding:40px 20px;color:var(--txt2)}
 .empty .ei{font-size:50px;margin-bottom:10px}
 .empty .et{font-size:16px;font-weight:700;color:var(--txt);margin-bottom:5px}
-
 /* TOAST */
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(80px);background:#1a1a1a;color:#fff;padding:11px 22px;border-radius:100px;font-size:13px;font-weight:700;z-index:999;transition:transform .3s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.3)}
 #toast.show{transform:translateX(-50%) translateY(0)}
-
 @media print{
   body *{display:none!important}
   #print-area,#print-area *{display:block!important}
@@ -155,7 +195,6 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
   .print-page{page-break-after:always;display:flex!important;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:'Nunito',sans-serif;text-align:center}
   .print-page h2{font-size:30px;font-weight:800;margin-bottom:8px;color:#1a1a1a}
   .print-page p{font-size:16px;color:#555;margin-bottom:24px}
-  .print-page .school{font-size:12px;color:#aaa;margin-top:18px}
 }
 </style>
 </head>
@@ -166,6 +205,7 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
   <div>
     <h1>Asistencia — 2° de Primaria</h1>
     <p id="hdate">Cargando...</p>
+    <p id="fb-status">⏳ Conectando con Firebase...</p>
   </div>
 </header>
 
@@ -178,6 +218,10 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 
 <!-- SCANNER -->
 <div class="page active" id="page-scanner">
+  <div id="setup-banner">
+    <h3>⚙️ Falta configurar Firebase</h3>
+    <p>Ve a la pestaña <strong>📊 Excel</strong> para ver las instrucciones paso a paso y conectar la base de datos.</p>
+  </div>
   <div class="card">
     <div class="card-head verde">📷 Apunta la cámara al QR del niño</div>
     <div id="video-wrap">
@@ -195,7 +239,7 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
     <div id="scan-res"></div>
   </div>
   <div class="card">
-    <div class="card-head verde">⏱ Registros de hoy</div>
+    <div class="card-head verde">⏱ Registros de hoy <span style="margin-left:auto;font-size:10px;font-weight:600;background:rgba(26,158,110,.15);padding:2px 8px;border-radius:20px">🔴 VIVO</span></div>
     <div id="rec-list"><div class="empty"><div class="ei">📝</div><div>Sin registros aún</div></div></div>
   </div>
 </div>
@@ -204,10 +248,10 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 <div class="page" id="page-alumnos">
   <div class="card">
     <div class="card-head azul">➕ Agregar alumno</div>
-    <div class="form-g"><label>Nombre completo</label><input id="inp-n" placeholder="Ej: María López Torres" onkeydown="if(event.key==='Enter')addAlumno()"/></div>
+    <div class="form-g"><label>Nombre completo</label><input id="inp-n" placeholder="Ej: GARCIA MENDOZA, Luciana" onkeydown="if(event.key==='Enter')addAlumno()"/></div>
     <div class="form-acts">
       <button class="btn b-green" onclick="addAlumno()">➕ Agregar</button>
-      <button class="btn b-amber" onclick="loadDemo()">📋 Cargar lista ejemplo</button>
+      <button class="btn b-amber" onclick="loadDemo()">📋 Cargar mis 23 alumnos</button>
     </div>
   </div>
   <div class="card">
@@ -231,13 +275,25 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
   <div class="alist" id="alist"></div>
 </div>
 
-<!-- EXCEL + IMPRIMIR -->
+<!-- EXCEL + INSTRUCCIONES FIREBASE -->
 <div class="page" id="page-excel">
+  <div class="card">
+    <div class="card-head rojo">🔥 Cómo configurar Firebase (gratis)</div>
+    <div style="padding:14px">
+      <div class="info-box amber">
+        <p><strong>Paso 1 —</strong> Entra a <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> con tu cuenta Google → <strong>Crear un proyecto</strong> → ponle nombre (ej: "asistencia2do") → sin Analytics está bien.</p>
+        <p><strong>Paso 2 —</strong> En el menú izquierdo → <strong>Realtime Database</strong> → <strong>Crear base de datos</strong> → elige ubicación (Estados Unidos está bien) → <strong>Modo de prueba</strong> → Aceptar.</p>
+        <p><strong>Paso 3 —</strong> Regresa al inicio del proyecto → clic en el ícono <strong>&lt;/&gt;</strong> → registra app web → ponle nombre → copia el bloque que dice <strong>const firebaseConfig = { ... }</strong></p>
+        <p><strong>Paso 4 —</strong> Abre tu <strong>index.html</strong> → busca la sección marcada con 🔧 → reemplaza los 7 valores de <strong>firebaseConfig</strong> con los tuyos (apiKey, authDomain, etc.).</p>
+        <p><strong>Paso 5 —</strong> Guarda y sube a GitHub. Abre en cualquier celular → todos verán la asistencia al instante. ✅</p>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="card-head verde">🖨️ Imprimir QR de cada niño</div>
     <div style="padding:14px">
       <div class="info-box green">
-        <p>📌 Genera una hoja por cada niño con su <strong>QR único y su nombre</strong>. Imprímelas y entrégaselas. Cada QR identifica solo a ese niño.</p>
+        <p>📌 Genera una hoja por cada niño con su <strong>QR único</strong>. Imprímelas, plastifícalas y entrégaselas para todo el año.</p>
       </div>
       <button class="btn b-dark" onclick="imprimirTodos()" style="width:100%;justify-content:center;padding:14px;font-size:15px">🖨️ Imprimir QR de todos</button>
     </div>
@@ -246,7 +302,7 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
     <div class="card-head verde">📊 Exportar asistencia a Excel</div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
       <div class="info-box amber">
-        <p>Descarga el Excel con todos los días del año. <strong>P = Presente · A = Ausente</strong> por cada día hábil.</p>
+        <p>Descarga el Excel con todos los días del año. <strong>P = Presente · A = Ausente</strong> por cada día hábil. Incluye % de asistencia.</p>
       </div>
       <button class="btn b-dark" onclick="exportFull()" style="width:100%;justify-content:center;padding:14px;font-size:15px">📥 Excel completo (Mayo–Dic)</button>
       <button class="btn b-green" onclick="exportMes()" style="width:100%;justify-content:center;padding:13px">📄 Solo este mes</button>
@@ -271,9 +327,9 @@ header p{font-size:11px;opacity:.75;margin-top:1px}
 <div id="toast"></div>
 
 <script>
-// ── ESTADO ──
-let alumnos = JSON.parse(localStorage.getItem('alu2do')||'[]');
-let asist   = JSON.parse(localStorage.getItem('asist2do')||'{}');
+// ── ESTADO (sincronizado con Firebase en tiempo real) ──
+window.alumnos = [];
+window.asist   = {};
 let camOn=false, stream=null, animFrame=null, lastScan=0;
 let fechaV = new Date();
 let qrA = null;
@@ -285,9 +341,20 @@ function dk(d){return d.toISOString().split('T')[0]}
 function hoy(){return dk(new Date())}
 function fmtDate(d){return `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]} ${d.getFullYear()}`}
 function toast(m,t=2800){const e=document.getElementById('toast');e.textContent=m;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),t)}
-function save(){localStorage.setItem('alu2do',JSON.stringify(alumnos));localStorage.setItem('asist2do',JSON.stringify(asist))}
 function gid(){return 'N'+Date.now().toString(36).toUpperCase()+Math.random().toString(36).substr(2,3).toUpperCase()}
 function ini(n){return n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase()}
+
+// ── GUARDAR EN FIREBASE ──
+function saveAlumnos(){
+  if(!window._fbReady){toast('⚠️ Firebase no configurado aún');return}
+  const obj={};
+  window.alumnos.forEach(a=>obj[a.id]=a);
+  window._set(window._ref(window._db,'alumnos'),obj);
+}
+function saveAsist(){
+  if(!window._fbReady){toast('⚠️ Firebase no configurado aún');return}
+  window._set(window._ref(window._db,'asistencia'),window.asist);
+}
 
 // ── TABS ──
 function tab(t){
@@ -304,36 +371,25 @@ function tab(t){
 
 // ── CÁMARA ──
 async function toggleCam(){camOn?stopCam():await startCam()}
-
 async function startCam(){
   try{
-    // Pedir cámara trasera con resolución alta
-    const constraints = {
-      video:{
-        facingMode:{ideal:'environment'},
-        width:{ideal:1920},
-        height:{ideal:1080},
-        focusMode:'continuous'
-      }
-    };
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const v = document.getElementById('video');
-    v.srcObject = stream;
-    v.style.display = 'block';
-    document.getElementById('overlay').style.display = 'block';
-    document.getElementById('scan-line').style.display = 'block';
-    document.getElementById('ph').style.display = 'none';
-    document.getElementById('scan-status').style.display = 'block';
-    const b = document.getElementById('btn-cam');
-    b.textContent = '⏹ Detener cámara'; b.classList.add('stop');
-    camOn = true;
-    v.onloadedmetadata = () => { v.play(); scanLoop(); };
-  } catch(e){
+    const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}};
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+    const v=document.getElementById('video');
+    v.srcObject=stream; v.style.display='block';
+    document.getElementById('overlay').style.display='block';
+    document.getElementById('scan-line').style.display='block';
+    document.getElementById('ph').style.display='none';
+    document.getElementById('scan-status').style.display='block';
+    const b=document.getElementById('btn-cam');
+    b.textContent='⏹ Detener cámara'; b.classList.add('stop');
+    camOn=true;
+    v.onloadedmetadata=()=>{v.play();scanLoop()};
+  }catch(e){
     console.error(e);
-    toast('⚠️ No se pudo acceder a la cámara. Verifica los permisos en tu navegador.');
+    toast('⚠️ No se pudo acceder a la cámara. Verifica los permisos.');
   }
 }
-
 function stopCam(){
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
   if(animFrame){cancelAnimationFrame(animFrame);animFrame=null}
@@ -347,108 +403,74 @@ function stopCam(){
   b.textContent='📷 Activar Cámara'; b.classList.remove('stop');
   camOn=false;
 }
-
-// ── SCAN LOOP con requestAnimationFrame (más fluido que setInterval) ──
 function scanLoop(){
-  animFrame = requestAnimationFrame(()=>{
+  animFrame=requestAnimationFrame(()=>{
     if(!camOn) return;
-    const now = Date.now();
-    // Escanear cada 100ms máximo
-    if(now - lastScan > 100){
-      lastScan = now;
-      tryDecode();
-    }
+    const now=Date.now();
+    if(now-lastScan>100){lastScan=now;tryDecode()}
     scanLoop();
   });
 }
-
 function tryDecode(){
-  const v = document.getElementById('video');
-  if(v.readyState < v.HAVE_ENOUGH_DATA || v.videoWidth === 0) return;
-
-  const c = document.getElementById('canvas-hidden');
-  const ctx = c.getContext('2d', {willReadFrequently: true});
-
-  // Intentar con la resolución completa primero
-  c.width = v.videoWidth;
-  c.height = v.videoHeight;
-  ctx.drawImage(v, 0, 0);
-
-  // Intentar decodificar imagen completa
-  let result = decodeFromCanvas(ctx, c.width, c.height);
-
-  // Si no encontró, probar con zoom al centro (área del recuadro)
+  const v=document.getElementById('video');
+  if(v.readyState<v.HAVE_ENOUGH_DATA||v.videoWidth===0) return;
+  const c=document.getElementById('canvas-hidden');
+  const ctx=c.getContext('2d',{willReadFrequently:true});
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  ctx.drawImage(v,0,0);
+  let result=decodeFromCanvas(ctx,c.width,c.height);
   if(!result){
-    const cx = Math.floor(c.width/2);
-    const cy = Math.floor(c.height/2);
-    const size = Math.min(c.width, c.height) * 0.6;
-    const x0 = Math.max(0, cx - size/2);
-    const y0 = Math.max(0, cy - size/2);
-    const cropW = Math.min(size, c.width - x0);
-    const cropH = Math.min(size, c.height - y0);
-
-    const c2 = document.createElement('canvas');
-    c2.width = 400; c2.height = 400;
-    const ctx2 = c2.getContext('2d', {willReadFrequently: true});
-    ctx2.drawImage(c, x0, y0, cropW, cropH, 0, 0, 400, 400);
-    result = decodeFromCanvas(ctx2, 400, 400);
+    const cx=Math.floor(c.width/2),cy=Math.floor(c.height/2);
+    const size=Math.min(c.width,c.height)*0.6;
+    const x0=Math.max(0,cx-size/2),y0=Math.max(0,cy-size/2);
+    const cropW=Math.min(size,c.width-x0),cropH=Math.min(size,c.height-y0);
+    const c2=document.createElement('canvas');
+    c2.width=400;c2.height=400;
+    const ctx2=c2.getContext('2d',{willReadFrequently:true});
+    ctx2.drawImage(c,x0,y0,cropW,cropH,0,0,400,400);
+    result=decodeFromCanvas(ctx2,400,400);
   }
-
-  if(result){
-    stopCam();
-    processQR(result);
-  }
+  if(result){stopCam();processQR(result)}
 }
-
-function decodeFromCanvas(ctx, w, h){
+function decodeFromCanvas(ctx,w,h){
   try{
-    const imageData = ctx.getImageData(0, 0, w, h);
-    // jsQR con máxima sensibilidad
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: 'attemptBoth'  // intenta normal e invertido
-    });
-    return code ? code.data : null;
-  }catch(e){ return null; }
+    if(typeof jsQR==='undefined'){console.warn('jsQR no disponible');return null}
+    const imageData=ctx.getImageData(0,0,w,h);
+    const code=jsQR(imageData.data,imageData.width,imageData.height,{inversionAttempts:'attemptBoth'});
+    return code?code.data:null;
+  }catch(e){return null}
 }
-
 function processQR(data){
-  // El QR contiene solo el ID del alumno
-  let id = data.trim();
-  // por si acaso contiene JSON
-  try{ const p=JSON.parse(data); id=p.id||id; }catch(e){}
-
-  const a = alumnos.find(x => x.id === id);
-  const res = document.getElementById('scan-res');
-  res.style.display = 'block';
-
+  let id=data.trim();
+  try{const p=JSON.parse(data);id=p.id||id}catch(e){}
+  const a=window.alumnos.find(x=>x.id===id);
+  const res=document.getElementById('scan-res');
+  res.style.display='block';
   if(!a){
-    res.innerHTML=`<div class="rcard err"><div class="ico">❌</div><div><div class="rname">QR no reconocido</div><div class="rinfo">Código leído: ${id.substring(0,20)}</div></div></div>`;
-    setTimeout(()=>res.style.display='none', 5000);
+    res.innerHTML=`<div class="rcard err"><div class="ico">❌</div><div><div class="rname">QR no reconocido</div><div class="rinfo">Código: ${id.substring(0,20)}</div></div></div>`;
+    setTimeout(()=>res.style.display='none',5000);
     return;
   }
-
-  const fecha = hoy();
-  if(!asist[fecha]) asist[fecha]={};
-
-  if(asist[fecha][a.id]){
-    const h = asist[fecha][a.id].hora;
+  const fecha=hoy();
+  if(!window.asist[fecha]) window.asist[fecha]={};
+  if(window.asist[fecha][a.id]){
+    const h=window.asist[fecha][a.id].hora;
     res.innerHTML=`<div class="rcard warn"><div class="ico">⚠️</div><div><div class="rname">${a.nombre}</div><div class="rinfo">Ya marcó asistencia hoy a las ${h}</div></div></div>`;
-  } else {
-    const now = new Date();
-    const hora = now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-    asist[fecha][a.id] = {estado:'P', hora};
-    save();
+  }else{
+    const now=new Date();
+    const hora=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+    window.asist[fecha][a.id]={estado:'P',hora};
+    saveAsist(); // → actualiza Firebase → todos los celulares en tiempo real
     res.innerHTML=`<div class="rcard ok"><div class="ico">✅</div><div><div class="rname">${a.nombre}</div><div class="rinfo">2° Primaria · Asistencia registrada a las ${hora} ✓</div></div></div>`;
     renderRec();
   }
-  setTimeout(()=>{ res.style.display='none'; startCam(); }, 3500);
+  setTimeout(()=>{res.style.display='none';startCam()},3500);
 }
-
 function renderRec(){
   const fecha=hoy();
-  const reg=Object.entries(asist[fecha]||{})
-    .map(([id,v])=>{const a=alumnos.find(x=>x.id===id);return a?{...v,nombre:a.nombre}:null})
-    .filter(Boolean).sort((a,b)=>b.hora.localeCompare(a.hora)).slice(0,15);
+  const reg=Object.entries(window.asist[fecha]||{})
+    .map(([id,v])=>{const a=window.alumnos.find(x=>x.id===id);return a?{...v,nombre:a.nombre}:null})
+    .filter(Boolean).sort((a,b)=>b.hora.localeCompare(a.hora)).slice(0,20);
   const el=document.getElementById('rec-list');
   if(!reg.length){el.innerHTML=`<div class="empty"><div class="ei">📝</div><div>Sin registros hoy</div></div>`;return}
   el.innerHTML=reg.map(r=>`<div class="rec-item"><div class="rdot"></div><div class="rn">${r.nombre}</div><div class="rh">${r.hora}</div></div>`).join('');
@@ -457,37 +479,45 @@ function renderRec(){
 // ── ALUMNOS ──
 function addAlumno(){
   const n=document.getElementById('inp-n').value.trim();
-  if(!n){toast('⚠️ Escribe el nombre del alumno');return}
-  if(alumnos.find(a=>a.nombre.toLowerCase()===n.toLowerCase())){toast('⚠️ Ya existe ese alumno');return}
-  alumnos.push({id:gid(),nombre:n,grado:'2° Primaria'});
-  save(); document.getElementById('inp-n').value='';
+  if(!n){toast('⚠️ Escribe el nombre');return}
+  if(window.alumnos.find(a=>a.nombre.toLowerCase()===n.toLowerCase())){toast('⚠️ Ya existe');return}
+  window.alumnos.push({id:gid(),nombre:n,grado:'2° Primaria'});
+  saveAlumnos();
+  document.getElementById('inp-n').value='';
   renderAlus(); toast('✅ '+n+' agregado');
 }
-
 function loadDemo(){
-  const demo=['Lucía Quispe Mamani','Carlos Ccallo Huanca','Ana Flores Condori','Diego Yupanqui Ticona',
-    'Sofía Mamani Ramos','Mateo Calla Huallpa','Valentina Apaza Quispe','Jesús Huanca Mamani',
-    'Camila Ticona Flores','Sebastián Condori Cruz','Isabella Ramos Ccallo','Nicolás Apaza Yupanqui',
-    'Daniela Huallpa Quispe','Emilio Mamani Calla','Fernanda Quispe Ticona','Andrés Flores Huanca',
-    'Gabriela Cruz Apaza','Rodrigo Ccallo Condori','Mariela Yupanqui Ramos','Fabrizio Ticona Mamani',
-    'Renata Huanca Flores','Álvaro Condori Apaza'];
+  const demo=[
+    'ASUNCION PEREZ, Samyr Caled','BENITES CUBA, Lyan Anthony',
+    'CENTURION GARCIA, Jhos Osmar','CHAVEZ TACILLA, Darwin Smith',
+    'CORDOVA LALANGUI, Lucas','CUEVA ARANDA, Carlos Renato',
+    'CULQUITANTE GUARNIZ, Dayana','FLORES PUÑO, Austin Zaid',
+    'GAMEZ VALERIANO, Zoé','GARCIA MENDOZA, Luciana',
+    'GONZALES LUDEÑA, Ashley','GUTIERREZ LAYZA, Mikhela',
+    'HERNANDEZ CEVALLOS, Maria','LLANOS CHAVEZ, Marco Gael',
+    'MARTINEZ SEGURA, Fabiano','OLAZABAL PINEDO, Lia Thayli',
+    'RAMOS CONTRERAS, Mia','RODRIGUEZ HORNA, Valentina',
+    'ROJO TOYO, Branyer Alexander','TORIBIO ARAUJO, Liam Zaid',
+    'URCIA CACERES, Lia Valentina','VARGAS SEGURA, Gala Alice',
+    'VILELA RIVAS, Thiago Alonso'
+  ];
   let added=0;
-  demo.forEach(n=>{if(!alumnos.find(a=>a.nombre===n)){alumnos.push({id:gid(),nombre:n,grado:'2° Primaria'});added++}});
-  save(); renderAlus(); toast(`✅ ${added} alumnos cargados`);
+  demo.forEach(n=>{if(!window.alumnos.find(a=>a.nombre===n)){window.alumnos.push({id:gid(),nombre:n,grado:'2° Primaria'});added++}});
+  if(added>0){saveAlumnos();renderAlus();toast(`✅ ${added} alumnos guardados en Firebase`)}
+  else toast('ℹ️ Los alumnos ya están cargados');
 }
-
 function delAlumno(id){
   if(!confirm('¿Eliminar este alumno?')) return;
-  alumnos=alumnos.filter(a=>a.id!==id);
-  Object.keys(asist).forEach(f=>delete asist[f][id]);
-  save(); renderAlus(); toast('🗑 Alumno eliminado');
+  window.alumnos=window.alumnos.filter(a=>a.id!==id);
+  Object.keys(window.asist).forEach(f=>{if(window.asist[f])delete window.asist[f][id]});
+  saveAlumnos(); saveAsist();
+  renderAlus(); toast('🗑 Alumno eliminado');
 }
-
 function renderAlus(){
-  document.getElementById('tot').textContent=alumnos.length;
+  document.getElementById('tot').textContent=window.alumnos.length;
   const el=document.getElementById('alu-list');
-  if(!alumnos.length){el.innerHTML=`<div class="empty"><div class="ei">👥</div><div class="et">Sin alumnos</div><div>Agrega alumnos para empezar</div></div>`;return}
-  el.innerHTML=alumnos.map((a,i)=>`
+  if(!window.alumnos.length){el.innerHTML=`<div class="empty"><div class="ei">👥</div><div class="et">Sin alumnos</div><div>Agrega alumnos para empezar</div></div>`;return}
+  el.innerHTML=window.alumnos.map((a,i)=>`
     <div class="alu">
       <div class="av">${ini(a.nombre)}</div>
       <div class="ai"><div class="an">${a.nombre}</div><div class="ag">2° Primaria · #${i+1}</div></div>
@@ -500,7 +530,7 @@ function renderAlus(){
 
 // ── QR MODAL ──
 function showQR(id){
-  const a=alumnos.find(x=>x.id===id);
+  const a=window.alumnos.find(x=>x.id===id);
   if(!a) return;
   qrA=a;
   document.getElementById('qm-name').textContent=a.nombre;
@@ -510,96 +540,74 @@ function showQR(id){
   new QRCode(box,{text:a.id,width:220,height:220,correctLevel:QRCode.CorrectLevel.H});
   document.getElementById('qr-modal').classList.add('open');
 }
-
 function closeModal(){document.getElementById('qr-modal').classList.remove('open')}
 document.getElementById('qr-modal').addEventListener('click',function(e){if(e.target===this)closeModal()});
-
 function dlQR(){
   if(!qrA) return;
   const c=document.querySelector('#qr-box canvas');
   if(!c){toast('⚠️ Espera que cargue el QR');return}
   const out=document.createElement('canvas');
-  out.width=280; out.height=330;
+  out.width=280;out.height=330;
   const ctx=out.getContext('2d');
-  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,280,330);
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,280,330);
   ctx.drawImage(c,30,20,220,220);
-  ctx.fillStyle='#1a1a1a'; ctx.font='bold 15px sans-serif'; ctx.textAlign='center';
-  // partir nombre si es muy largo
+  ctx.fillStyle='#1a1a1a';ctx.font='bold 15px sans-serif';ctx.textAlign='center';
   const words=qrA.nombre.split(' ');
-  if(words.length>3){
-    ctx.fillText(words.slice(0,3).join(' '),140,262);
-    ctx.fillText(words.slice(3).join(' '),140,280);
-  } else {
-    ctx.fillText(qrA.nombre,140,265);
-  }
-  ctx.fillStyle='#888'; ctx.font='12px sans-serif';
+  if(words.length>3){ctx.fillText(words.slice(0,3).join(' '),140,262);ctx.fillText(words.slice(3).join(' '),140,280)}
+  else ctx.fillText(qrA.nombre,140,265);
+  ctx.fillStyle='#888';ctx.font='12px sans-serif';
   ctx.fillText('2° de Primaria',140,300);
   const lnk=document.createElement('a');
   lnk.download=`QR_${qrA.nombre.replace(/ /g,'_')}.png`;
-  lnk.href=out.toDataURL('image/png'); lnk.click();
+  lnk.href=out.toDataURL('image/png');lnk.click();
   toast('✅ QR guardado');
 }
 
 // ── IMPRIMIR TODOS ──
 function imprimirTodos(){
-  if(!alumnos.length){toast('⚠️ No hay alumnos registrados');return}
+  if(!window.alumnos.length){toast('⚠️ No hay alumnos registrados');return}
   const area=document.getElementById('print-area');
   area.innerHTML='';
-  let pending=alumnos.length;
-
-  alumnos.forEach(a=>{
+  let pending=window.alumnos.length;
+  window.alumnos.forEach(a=>{
     const page=document.createElement('div');
     page.className='print-page';
     page.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;text-align:center;page-break-after:always';
-
     const title=document.createElement('h2');
-    title.style.cssText='font-size:28px;font-weight:800;margin-bottom:6px;color:#1a1a1a;max-width:400px';
+    title.style.cssText='font-size:26px;font-weight:800;margin-bottom:6px;color:#1a1a1a;max-width:400px';
     title.textContent=a.nombre;
-
     const sub=document.createElement('p');
     sub.style.cssText='font-size:16px;color:#555;margin-bottom:22px';
     sub.textContent='2° de Primaria';
-
     const qwrap=document.createElement('div');
     qwrap.style.cssText='border:4px solid #1a9e6e;border-radius:12px;padding:10px;display:inline-block;background:#fff';
-
     const school=document.createElement('p');
-    school.className='school';
     school.style.cssText='font-size:11px;color:#aaa;margin-top:18px';
-    school.textContent='Tarjeta de Asistencia — ID: '+a.id;
-
-    page.appendChild(title);
-    page.appendChild(sub);
-    page.appendChild(qwrap);
-    page.appendChild(school);
+    school.textContent='ID: '+a.id;
+    page.appendChild(title);page.appendChild(sub);page.appendChild(qwrap);page.appendChild(school);
     area.appendChild(page);
-
     new QRCode(qwrap,{text:a.id,width:260,height:260,correctLevel:QRCode.CorrectLevel.H});
     pending--;
     if(pending===0){
       area.style.display='block';
-      setTimeout(()=>{
-        window.print();
-        setTimeout(()=>{area.style.display='none';area.innerHTML=''},800);
-      },800);
+      setTimeout(()=>{window.print();setTimeout(()=>{area.style.display='none';area.innerHTML=''},800)},800);
     }
   });
 }
 
 // ── ASISTENCIA ──
 function moveFecha(d){fechaV=new Date(fechaV);fechaV.setDate(fechaV.getDate()+d);renderAsist()}
-
 function renderAsist(){
-  const key=dk(fechaV),h=hoy(),data=asist[key]||{};
-  const pres=alumnos.filter(a=>data[a.id]).length;
+  const key=dk(fechaV),h=hoy(),data=window.asist[key]||{};
+  const pres=window.alumnos.filter(a=>data[a.id]).length;
   document.getElementById('sp').textContent=pres;
-  document.getElementById('sa').textContent=Math.max(0,alumnos.length-pres);
-  document.getElementById('st').textContent=alumnos.length;
+  document.getElementById('sa').textContent=Math.max(0,window.alumnos.length-pres);
+  document.getElementById('st').textContent=window.alumnos.length;
   document.getElementById('fnav-l').textContent=key===h?'Hoy':DIAS[fechaV.getDay()];
   document.getElementById('fnav-s').textContent=fmtDate(fechaV);
   const el=document.getElementById('alist');
-  if(!alumnos.length){el.innerHTML=`<div class="empty"><div class="ei">👥</div><div>Sin alumnos</div></div>`;return}
-  el.innerHTML=alumnos.map(a=>{
+  if(!window.alumnos.length){el.innerHTML=`<div class="empty"><div class="ei">👥</div><div>Sin alumnos</div></div>`;return}
+  el.innerHTML=window.alumnos.map(a=>{
     const r=data[a.id];
     const cls=r?'p':(key<=h?'a':'n');
     const lbl=r?'Presente':(key<=h?'Ausente':'—');
@@ -609,7 +617,7 @@ function renderAsist(){
 
 // ── EXCEL ──
 function exportFull(){
-  if(!alumnos.length){toast('⚠️ Sin alumnos');return}
+  if(!window.alumnos.length){toast('⚠️ Sin alumnos');return}
   const wb=XLSX.utils.book_new();
   hojaMes(wb,true);
   const now=new Date();
@@ -618,7 +626,7 @@ function exportFull(){
   toast('✅ Excel descargado');
 }
 function exportMes(){
-  if(!alumnos.length){toast('⚠️ Sin alumnos');return}
+  if(!window.alumnos.length){toast('⚠️ Sin alumnos');return}
   const wb=XLSX.utils.book_new();
   const now=new Date();
   hojaMes(wb,false,now.getFullYear(),now.getMonth());
@@ -629,13 +637,13 @@ function hojaMes(wb,resumen=false,año=new Date().getFullYear(),mes=new Date().g
   if(resumen){
     const h=hoy();
     const rows=[['RESUMEN DE ASISTENCIA — 2° DE PRIMARIA'],[''],['ALUMNO','PRESENTES','AUSENTES','% ASISTENCIA']];
-    alumnos.forEach(a=>{
+    window.alumnos.forEach(a=>{
       let p=0,t=0;
-      Object.keys(asist).forEach(f=>{if(f<=h){t++;if(asist[f][a.id])p++}});
+      Object.keys(window.asist).forEach(f=>{if(f<=h){t++;if(window.asist[f]&&window.asist[f][a.id])p++}});
       rows.push([a.nombre,p,t-p,t?Math.round(p/t*100)+'%':'0%']);
     });
     const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']=[{wch:32},{wch:12},{wch:12},{wch:14}];
+    ws['!cols']=[{wch:34},{wch:12},{wch:12},{wch:14}];
     XLSX.utils.book_append_sheet(wb,ws,'Resumen');
     return;
   }
@@ -645,10 +653,10 @@ function hojaMes(wb,resumen=false,año=new Date().getFullYear(),mes=new Date().g
   const h=hoy();
   const hdr=['Alumno',...dias.map(d=>`${d.getDate()}/${d.getMonth()+1}`),'Total P','%'];
   const rows=[hdr];
-  alumnos.forEach(a=>{
+  window.alumnos.forEach(a=>{
     let p=0;
     const fila=[a.nombre,...dias.map(d=>{
-      const k=dk(d),r=asist[k]&&asist[k][a.id];
+      const k=dk(d),r=window.asist[k]&&window.asist[k][a.id];
       if(r){p++;return'P'} if(k<=h)return'A'; return'-';
     })];
     const dp=dias.filter(d=>dk(d)<=h).length;
@@ -664,11 +672,14 @@ function hojaMes(wb,resumen=false,año=new Date().getFullYear(),mes=new Date().g
 document.getElementById('hdate').textContent=fmtDate(new Date());
 renderAlus(); renderRec();
 
-// Cargar jsQR dinámicamente (más confiable)
-const s=document.createElement('script');
-s.src='https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js';
-s.onload=()=>console.log('jsQR listo');
-document.head.appendChild(s);
+// Mostrar banner si Firebase no conectó en 3 segundos
+setTimeout(()=>{
+  if(!window._fbReady){
+    document.getElementById('setup-banner').classList.add('show');
+    document.getElementById('fb-status').textContent='🔴 Firebase no configurado';
+    document.getElementById('fb-status').style.color='#f5a0a0';
+  }
+},3000);
 </script>
 </body>
 </html>
