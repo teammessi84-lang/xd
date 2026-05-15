@@ -32,8 +32,6 @@
   window._ref = ref;
   window._set = set;
   window._fbReady = true;
-  document.getElementById('fb-status').textContent = '🟢 Conectado · Tiempo real activo';
-  document.getElementById('fb-status').style.color = '#7de0bc';
 
   // Escuchar alumnos en tiempo real
   onValue(ref(db,'alumnos'), snap=>{
@@ -357,6 +355,7 @@ function tab(t){
 
 // ── CÁMARA con html5-qrcode ──
 let html5Qr = null;
+let _procesando = false;
 
 async function toggleCam(){
   if(camOn){ await stopCam(); } else { await startCam(); }
@@ -364,21 +363,22 @@ async function toggleCam(){
 
 async function startCam(){
   try{
+    _procesando = false;
     const btn = document.getElementById('btn-cam');
     btn.textContent = '⏳ Iniciando...'; btn.disabled = true;
 
-    // Limpiar y recrear el div reader para arranque limpio
     const readerDiv = document.getElementById('reader');
     readerDiv.innerHTML = '';
-    // Pequeña pausa para que el DOM se actualice
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 200));
 
     html5Qr = new Html5Qrcode('reader');
     await html5Qr.start(
       {facingMode:'environment'},
       {fps:10, qrbox:{width:250,height:250}, aspectRatio:1.0},
-      (decodedText) => {
-        stopCam();
+      async (decodedText) => {
+        if(_procesando) return;
+        _procesando = true;
+        await stopCam();
         processQR(decodedText);
       },
       (err) => {}
@@ -401,6 +401,7 @@ async function startCam(){
 }
 
 async function stopCam(){
+  camOn = false;
   try{
     if(html5Qr){
       await html5Qr.stop();
@@ -408,14 +409,14 @@ async function stopCam(){
       html5Qr = null;
     }
   }catch(e){ html5Qr = null; }
-  // Limpiar el div para que no quede en blanco al reiniciar
   const readerDiv = document.getElementById('reader');
   if(readerDiv) readerDiv.innerHTML = '';
-  camOn = false;
   const btn = document.getElementById('btn-cam');
-  btn.textContent = '📷 Activar Cámara';
-  btn.style.background = 'var(--verde)';
-  btn.disabled = false;
+  if(btn){
+    btn.textContent = '📷 Activar Cámara';
+    btn.style.background = 'var(--verde)';
+    btn.disabled = false;
+  }
 }
 
 function processQR(data){
@@ -425,22 +426,8 @@ function processQR(data){
   const res=document.getElementById('scan-res');
   res.style.display='block';
   if(!a){
-    // Mostrar diagnóstico detallado
-    const totalAlumnos = window.alumnos.length;
-    const algunosIDs = window.alumnos.slice(0,3).map(x=>x.id).join(', ');
-    res.innerHTML=`<div class="rcard err">
-      <div class="ico">❌</div>
-      <div>
-        <div class="rname">QR no reconocido</div>
-        <div class="rinfo" style="margin-top:6px">
-          <strong>QR leído:</strong> <code style="background:#fdd;padding:2px 5px;border-radius:4px;font-size:11px;word-break:break-all">${id}</code><br><br>
-          <strong>Alumnos en Firebase:</strong> ${totalAlumnos}<br>
-          <strong>Primeros IDs:</strong> <code style="font-size:10px">${algunosIDs||'ninguno'}</code><br><br>
-          ${totalAlumnos===0?'<strong style="color:red">⚠️ Firebase está vacío — ve a Alumnos y toca Cargar lista</strong>':'<strong style="color:#c07000">⚠️ Este QR es de una lista anterior. Imprime los QR nuevamente.</strong>'}
-        </div>
-      </div>
-    </div>`;
-    setTimeout(()=>{res.style.display='none';startCam()},8000);
+    res.innerHTML=`<div class="rcard err"><div class="ico">❌</div><div><div class="rname">QR no reconocido</div><div class="rinfo">Este QR no corresponde a ningún alumno. Usa los QR generados en la app.</div></div></div>`;
+    setTimeout(()=>{res.style.display='none'; _procesando=false; startCam();},4000);
     return;
   }
   const fecha=hoy();
@@ -452,11 +439,11 @@ function processQR(data){
     const now=new Date();
     const hora=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
     window.asist[fecha][a.id]={estado:'P',hora};
-    saveAsist(); // → actualiza Firebase → todos los celulares en tiempo real
-    res.innerHTML=`<div class="rcard ok"><div class="ico">✅</div><div><div class="rname">${a.nombre}</div><div class="rinfo">2° Primaria · Asistencia registrada a las ${hora} ✓</div></div></div>`;
+    saveAsist();
+    res.innerHTML=`<div class="rcard ok"><div class="ico">✅</div><div><div class="rname">${a.nombre}</div><div class="rinfo">Asistencia registrada a las ${hora} ✓</div></div></div>`;
     renderRec();
   }
-  setTimeout(()=>{res.style.display='none';startCam()},3500);
+  setTimeout(()=>{res.style.display='none'; _procesando=false; startCam();},3000);
 }
 function renderRec(){
   const fecha=hoy();
