@@ -386,7 +386,15 @@ async function startCam(){
     const b=document.getElementById('btn-cam');
     b.textContent='⏹ Detener cámara'; b.classList.add('stop');
     camOn=true;
-    await new Promise(res=>{ v.onloadedmetadata=()=>{ v.play(); setTimeout(res,800); }; });
+    await new Promise(res=>{
+      const done = ()=>{ v.play(); setTimeout(res, 600); };
+      if(v.readyState >= 2){ done(); }
+      else {
+        v.oncanplay = ()=>{ v.oncanplay=null; done(); };
+        v.onloadedmetadata = ()=>{ if(v.readyState>=2){ v.oncanplay=null; done(); } };
+        setTimeout(()=>{ v.oncanplay=null; v.onloadedmetadata=null; v.play(); res(); }, 3000);
+      }
+    });
     scanLoop();
     toast('📷 Cámara lista — acerca el QR al recuadro');
   }catch(e){
@@ -407,17 +415,24 @@ function stopCam(){
   b.textContent='📷 Activar Cámara'; b.classList.remove('stop');
   camOn=false;
 }
+let _lastDecodeTime = 0;
 function scanLoop(){
-  if(!camOn) return;
-  setTimeout(()=>{
-    tryDecode();
+  if(!camOn){ animFrame=null; return; }
+  animFrame = requestAnimationFrame(()=>{
+    const now = Date.now();
+    if(now - _lastDecodeTime >= 250){
+      _lastDecodeTime = now;
+      tryDecode();
+    }
     scanLoop();
-  }, 300); // cada 300ms — más estable en móvil
+  });
 }
 function tryDecode(){
   if(!camOn) return;
   const v=document.getElementById('video');
-  if(!v||v.readyState<2||v.videoWidth===0||v.paused) return;
+  // readyState>=2 (HAVE_CURRENT_DATA) y dimensiones válidas
+  if(!v || v.videoWidth===0 || v.videoHeight===0) return;
+  if(v.readyState < 2) return;
 
   const c=document.getElementById('canvas-hidden');
   const ctx=c.getContext('2d',{willReadFrequently:true});
@@ -426,12 +441,14 @@ function tryDecode(){
   const scale = Math.min(1, 640/v.videoWidth);
   c.width  = Math.floor(v.videoWidth  * scale);
   c.height = Math.floor(v.videoHeight * scale);
-  ctx.drawImage(v, 0, 0, c.width, c.height);
+
+  try{ ctx.drawImage(v, 0, 0, c.width, c.height); }
+  catch(e){ return; } // frame aún no disponible
 
   // Intento 1: imagen completa
   let result = decodeFromCanvas(ctx, c.width, c.height);
 
-  // Intento 2: recorte central 60%
+  // Intento 2: recorte central 65%
   if(!result){
     const size = Math.floor(Math.min(c.width, c.height) * 0.65);
     const x0   = Math.floor((c.width  - size) / 2);
@@ -439,11 +456,11 @@ function tryDecode(){
     const crop = ctx.getImageData(x0, y0, size, size);
     const c2   = document.createElement('canvas');
     c2.width = c2.height = size;
-    c2.getContext('2d').putImageData(crop, 0, 0);
+    c2.getContext('2d',{willReadFrequently:true}).putImageData(crop, 0, 0);
     result = decodeFromCanvas(c2.getContext('2d',{willReadFrequently:true}), size, size);
   }
 
-  // Intento 3: imagen en escala de grises (mejor contraste)
+  // Intento 3: escala de grises (mejor contraste en poca luz)
   if(!result){
     const imgData = ctx.getImageData(0,0,c.width,c.height);
     const d = imgData.data;
