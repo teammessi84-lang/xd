@@ -370,117 +370,127 @@ function tab(t){
 }
 
 // ── CÁMARA ──
+let _barcodeDetector = null;
+let _scanTimer = null;
+let _scanning = false;
+
+// Detectar si el navegador soporta BarcodeDetector nativo (Android Chrome)
+async function _initDetector(){
+  try{
+    if('BarcodeDetector' in window){
+      const formats = await BarcodeDetector.getSupportedFormats();
+      if(formats.includes('qr_code')){
+        _barcodeDetector = new BarcodeDetector({formats:['qr_code']});
+        console.log('✅ BarcodeDetector nativo disponible');
+        return;
+      }
+    }
+  }catch(e){}
+  console.log('ℹ️ Usando jsQR como fallback');
+}
+_initDetector();
+
 async function toggleCam(){camOn?stopCam():await startCam()}
+
 async function startCam(){
   try{
-    // Cerrar modal si está abierto
     closeModal();
-    const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}};
-    stream=await navigator.mediaDevices.getUserMedia(constraints);
-    const v=document.getElementById('video');
-    v.srcObject=stream; v.style.display='block';
-    document.getElementById('overlay').style.display='block';
-    document.getElementById('scan-line').style.display='block';
-    document.getElementById('ph').style.display='none';
-    document.getElementById('scan-status').style.display='block';
-    const b=document.getElementById('btn-cam');
-    b.textContent='⏹ Detener cámara'; b.classList.add('stop');
-    camOn=true;
-    await new Promise(res=>{
-      const done = ()=>{ v.play(); setTimeout(res, 600); };
-      if(v.readyState >= 2){ done(); }
-      else {
-        v.oncanplay = ()=>{ v.oncanplay=null; done(); };
-        v.onloadedmetadata = ()=>{ if(v.readyState>=2){ v.oncanplay=null; done(); } };
-        setTimeout(()=>{ v.oncanplay=null; v.onloadedmetadata=null; v.play(); res(); }, 3000);
-      }
+    // Resolución media — más confiable en gama media Android
+    const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}};
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const v = document.getElementById('video');
+    v.srcObject = stream;
+    v.style.display = 'block';
+    document.getElementById('overlay').style.display = 'block';
+    document.getElementById('scan-line').style.display = 'block';
+    document.getElementById('ph').style.display = 'none';
+    document.getElementById('scan-status').style.display = 'block';
+    const b = document.getElementById('btn-cam');
+    b.textContent = '⏹ Detener cámara'; b.classList.add('stop');
+    camOn = true;
+
+    // Esperar que el video esté realmente listo
+    await new Promise(res => {
+      v.onloadeddata = () => { v.onloadeddata = null; res(); };
+      v.play();
+      // Fallback: si en 4s no dispara, continuar igual
+      setTimeout(res, 4000);
     });
-    scanLoop();
+
     toast('📷 Cámara lista — acerca el QR al recuadro');
+    _startScanLoop();
   }catch(e){
-    console.error(e);
+    console.error('startCam error:', e);
+    camOn = false;
     toast('⚠️ No se pudo acceder a la cámara. Verifica los permisos.');
   }
 }
+
 function stopCam(){
-  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
-  if(animFrame){cancelAnimationFrame(animFrame);animFrame=null}
-  const v=document.getElementById('video');
-  v.style.display='none'; v.srcObject=null;
-  document.getElementById('overlay').style.display='none';
-  document.getElementById('scan-line').style.display='none';
-  document.getElementById('ph').style.display='block';
-  document.getElementById('scan-status').style.display='none';
-  const b=document.getElementById('btn-cam');
-  b.textContent='📷 Activar Cámara'; b.classList.remove('stop');
-  camOn=false;
+  camOn = false;
+  _scanning = false;
+  if(_scanTimer){ clearTimeout(_scanTimer); _scanTimer = null; }
+  if(animFrame){ cancelAnimationFrame(animFrame); animFrame = null; }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+  const v = document.getElementById('video');
+  v.pause(); v.srcObject = null; v.style.display = 'none';
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('scan-line').style.display = 'none';
+  document.getElementById('ph').style.display = 'block';
+  document.getElementById('scan-status').style.display = 'none';
+  const b = document.getElementById('btn-cam');
+  b.textContent = '📷 Activar Cámara'; b.classList.remove('stop');
 }
-let _lastDecodeTime = 0;
-function scanLoop(){
-  if(!camOn){ animFrame=null; return; }
-  animFrame = requestAnimationFrame(()=>{
-    const now = Date.now();
-    if(now - _lastDecodeTime >= 250){
-      _lastDecodeTime = now;
-      tryDecode();
-    }
-    scanLoop();
-  });
-}
-function tryDecode(){
+
+function _startScanLoop(){
   if(!camOn) return;
-  const v=document.getElementById('video');
-  // readyState>=2 (HAVE_CURRENT_DATA) y dimensiones válidas
-  if(!v || v.videoWidth===0 || v.videoHeight===0) return;
-  if(v.readyState < 2) return;
-
-  const c=document.getElementById('canvas-hidden');
-  const ctx=c.getContext('2d',{willReadFrequently:true});
-
-  // Escalar a 640px máximo para rendimiento en móvil
-  const scale = Math.min(1, 640/v.videoWidth);
-  c.width  = Math.floor(v.videoWidth  * scale);
-  c.height = Math.floor(v.videoHeight * scale);
-
-  try{ ctx.drawImage(v, 0, 0, c.width, c.height); }
-  catch(e){ return; } // frame aún no disponible
-
-  // Intento 1: imagen completa
-  let result = decodeFromCanvas(ctx, c.width, c.height);
-
-  // Intento 2: recorte central 65%
-  if(!result){
-    const size = Math.floor(Math.min(c.width, c.height) * 0.65);
-    const x0   = Math.floor((c.width  - size) / 2);
-    const y0   = Math.floor((c.height - size) / 2);
-    const crop = ctx.getImageData(x0, y0, size, size);
-    const c2   = document.createElement('canvas');
-    c2.width = c2.height = size;
-    c2.getContext('2d',{willReadFrequently:true}).putImageData(crop, 0, 0);
-    result = decodeFromCanvas(c2.getContext('2d',{willReadFrequently:true}), size, size);
-  }
-
-  // Intento 3: escala de grises (mejor contraste en poca luz)
-  if(!result){
-    const imgData = ctx.getImageData(0,0,c.width,c.height);
-    const d = imgData.data;
-    for(let i=0;i<d.length;i+=4){
-      const g = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
-      d[i]=d[i+1]=d[i+2]=g;
-    }
-    ctx.putImageData(imgData,0,0);
-    result = decodeFromCanvas(ctx, c.width, c.height);
-  }
-
-  if(result){ stopCam(); processQR(result); }
+  _scanning = true;
+  _scanTick();
 }
-function decodeFromCanvas(ctx, w, h){
-  try{
-    if(typeof jsQR==='undefined') return null;
-    const imageData = ctx.getImageData(0,0,w,h);
-    const code = jsQR(imageData.data, w, h, {inversionAttempts:'attemptBoth'});
-    return code ? code.data : null;
-  }catch(e){ return null; }
+
+function _scanTick(){
+  if(!camOn || !_scanning) return;
+  _scanTimer = setTimeout(async ()=>{
+    try{ await _tryDecode(); }catch(e){}
+    if(camOn && _scanning) _scanTick();
+  }, 300);
+}
+
+async function _tryDecode(){
+  const v = document.getElementById('video');
+  if(!v || !camOn) return;
+  if(v.readyState < 2 || v.videoWidth === 0 || v.videoHeight === 0) return;
+
+  let result = null;
+
+  // MÉTODO 1: BarcodeDetector nativo (mucho más rápido y preciso)
+  if(_barcodeDetector){
+    try{
+      const codes = await _barcodeDetector.detect(v);
+      if(codes && codes.length > 0) result = codes[0].rawValue;
+    }catch(e){ _barcodeDetector = null; } // si falla, caer a jsQR
+  }
+
+  // MÉTODO 2: jsQR vía canvas (fallback universal)
+  if(!result && typeof jsQR !== 'undefined'){
+    const c = document.getElementById('canvas-hidden');
+    const ctx = c.getContext('2d', {willReadFrequently:true});
+    const W = Math.min(v.videoWidth, 640);
+    const H = Math.round(v.videoHeight * W / v.videoWidth);
+    c.width = W; c.height = H;
+    try{
+      ctx.drawImage(v, 0, 0, W, H);
+      const imgData = ctx.getImageData(0, 0, W, H);
+      const code = jsQR(imgData.data, W, H, {inversionAttempts:'attemptBoth'});
+      if(code) result = code.data;
+    }catch(e){}
+  }
+
+  if(result){
+    _scanning = false;
+    stopCam();
+    processQR(result);
+  }
 }
 function processQR(data){
   let id=data.trim();
